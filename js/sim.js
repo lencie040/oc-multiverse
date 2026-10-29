@@ -1,6 +1,6 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=17';
-import { randomWild, randomTown, pathBetween } from './model.js?v=17';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=19';
+import { randomWild, randomTown, pathBetween } from './model.js?v=19';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -149,7 +149,7 @@ export class Sim {
 
   // ---------- 日報 ----------
   newDaily() {
-    return { day: this.day, kills: {}, battles: 0, downs: 0, travels: 0, danJumps: [], raidsWon: [], raidsLost: [], treasures: [], bestFriends: [], camps: 0, duels: 0 };
+    return { day: this.day, kills: {}, battles: 0, downs: 0, travels: 0, danJumps: [], raidsWon: [], raidsLost: [], raidsFled: [], treasures: [], bestFriends: [], camps: 0, duels: 0 };
   }
   makeReport(d) {
     const top = Object.entries(d.kills).sort((a, b) => b[1] - a[1]).slice(0, 3)
@@ -445,6 +445,20 @@ export class Sim {
         const fighters = this.raidFighters(r);
         if (!fighters.length) {
           this.log(`🌫️ 誰も集まらず、レイドボス「${r.name}」は「${this.wname(r.world)}」から去っていった`, r.world, [], true, { kind: 'raid-end' });
+          this.endRaid(r);
+          continue;
+        }
+        // 戦力が足りなければ無理をせず撤退する (倒れる人は出ない)
+        const ratio = this.raidPower(r) / r.power;
+        if (ratio < 0.5 || (ratio < 0.75 && chance(0.7))) {
+          const ids = fighters.flatMap((c) => this.partyOf(c).filter((p) => p.world === r.world).map((p) => p.id));
+          for (const id of ids) {
+            const c = this.m.charById.get(id);
+            this.say(c, pick(['今日は分が悪い…', '撤退だ！', '無理はしないでおこう', '覚えてろ〜！']));
+            this.emote(c, '💦');
+          }
+          this.daily?.raidsFled.push({ name: r.name, world: r.world, n: ids.length });
+          this.log(`🏃 戦力が足りず、${ids.length}人はレイドボス「${r.name}」から撤退した（集まった戦力${Math.round(this.raidPower(r))}／ボス${r.power}）。ボスは去っていった`, r.world, ids, true, { kind: 'raid-end' });
           this.endRaid(r);
           continue;
         }
@@ -961,6 +975,7 @@ export class Sim {
     this.raids = (s.raids || []).filter((r) => this.m.worlds.has(r.world));
     this.nextRaidId = s.nextRaidId || 1;
     this.daily = s.daily || this.newDaily();
+    this.daily.raidsFled ??= [];
     this.report = s.report || null;
     for (const c of this.m.chars) {
       const d = map.get(c.id);

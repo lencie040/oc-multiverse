@@ -1,7 +1,7 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=17';
-import { prioOf } from './director.js?v=17';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=17';
+import { CATS } from './sim.js?v=19';
+import { prioOf } from './director.js?v=19';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=19';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -205,7 +205,8 @@ export class UI {
       + `<div class="head">${escapeHtml(head)}</div>`
       + `<div class="nums"><div><b>${r.battles}</b><span>魔物退治</span></div><div><b>${r.downs}</b><span>気絶</span></div><div><b>${r.travels}</b><span>世界線移動</span></div><div><b>${r.camps}</b><span>野宿</span></div><div><b>${r.duels}</b><span>撃退騒ぎ</span></div></div>`
       + `<h4>⚔️ 魔物退治MVP</h4>${li(r.mvp, (m, i) => `${escapeHtml(m.name)} … ${m.n}体`)}`
-      + `<h4>🐉 レイド</h4>${li([...r.raidsWon.map((x) => ({ ...x, win: true })), ...r.raidsLost], (x) => `${escapeHtml(wn(x.world))}の「${escapeHtml(x.name)}」… ${x.win ? `${x.n}人で撃破🏆` : `${x.n}人が敗北💥`}`)}`
+      + `<h4>🐉 レイド</h4>${li([...r.raidsWon.map((x) => ({ ...x, res: 'win' })), ...r.raidsLost.map((x) => ({ ...x, res: 'lose' })), ...(r.raidsFled || []).map((x) => ({ ...x, res: 'fled' }))],
+        (x) => `${escapeHtml(wn(x.world))}の「${escapeHtml(x.name)}」… ${x.res === 'win' ? `${x.n}人で撃破🏆` : x.res === 'lose' ? `${x.n}人が敗北💥` : `${x.n}人が撤退🏃`}`)}`
       + `<h4>💕 新しい親友</h4>${li(r.bestFriends, ([a, b]) => `${escapeHtml(a)} と ${escapeHtml(b)}`)}`
       + `<h4>💎 見つかった宝物</h4>${li([...rare, ...r.treasures.filter((x) => !x.rare)].slice(0, 8), (x) => `${x.rare ? '💎' : '✨'} ${escapeHtml(x.name)}「${escapeHtml(x.item)}」`)}`
       + `<h4>🌌 世界団を越えたキャラ</h4>${li(r.danJumps, (x) => `${escapeHtml(x.name)}（${escapeHtml(wn(x.from))} → ${escapeHtml(wn(x.to))}）`)}`
