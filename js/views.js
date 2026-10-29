@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=13';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=13';
-import { CATS } from './sim.js?v=13';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=14';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=14';
+import { CATS } from './sim.js?v=14';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -678,7 +678,7 @@ export class WorldView extends BaseView {
     g.add(bl);
     sp.userData.charId = c.id;
     g.userData = {
-      pick: true, sp, nl, bl, tex, last: '', bubLast: '', phase: Math.random() * 10, emoteN: c.emote?.n, hitT: Math.random(),
+      pick: true, sp, sh, nl, bl, tex, last: '', bubLast: '', phase: Math.random() * 10, emoteN: c.emote?.n, hitT: Math.random(),
       onClick: () => this.app.selectChar(c.id),
       onHover: (on) => nameEl.classList.toggle('hot', on),
     };
@@ -742,14 +742,21 @@ export class WorldView extends BaseView {
     // キャラクター
     const here = new Set();
     for (const c of this.app.model.chars) {
-      if (c.world !== this.worldId) continue;
+      // この世界線を出発した・この世界線に向かっているキャラは空を飛んでいる姿を見せる
+      const fly = c.transit && (c.transit.from === this.worldId || c.transit.to === this.worldId) ? this.flightPos(c.transit) : null;
+      if (c.world !== this.worldId && !fly) continue;
       here.add(c.id);
       let o = this.charObjs.get(c.id);
       if (!o) { o = this.makeCharObj(c); this.charObjs.set(c.id, o); }
       const u = o.userData;
-      const dx = c.x - o.position.x, dz = c.z - o.position.z;
-      if (dx * dx + dz * dz > 400) o.position.set(c.x, 0, c.z);
-      else { o.position.x += dx * Math.min(1, dt * 8); o.position.z += dz * Math.min(1, dt * 8); }
+      u.sh.visible = !fly;
+      if (fly) o.position.copy(fly);
+      else {
+        o.position.y = 0;
+        const dx = c.x - o.position.x, dz = c.z - o.position.z;
+        if (dx * dx + dz * dz > 400) o.position.set(c.x, 0, c.z);
+        else { o.position.x += dx * Math.min(1, dt * 8); o.position.z += dz * Math.min(1, dt * 8); }
+      }
       const H = 3.2 + (c.rank - 1) * 0.12;
       const W = H * (u.tex.ready ? u.tex.aspect : 1) * (c.img ? 1 : 0.92);
       const down = c.state === 'down', lying = down || c.state === 'camp' || c.state === 'sleep';
@@ -895,6 +902,23 @@ export class WorldView extends BaseView {
       if (f.life <= 0) { this.scene.remove(f.m); f.m.geometry.dispose(); f.m.material.dispose(); return false; }
       return true;
     });
+  }
+
+  // 出発: ポータルから外へ向かって空に上がっていく / 到着: 空から降りてきてポータルに着く
+  flightPos(tr) {
+    const { sim } = this.app;
+    const f = sim.transitProgress(tr);
+    const leaving = tr.from === this.worldId;
+    const d = leaving ? f : 1 - f;
+    let base;
+    if (tr.kind === 'line') {
+      const p = this.world.geo.portals[leaving ? tr.to : tr.from] || { x: 0, z: 0 };
+      base = leaving ? p : { x: p.x * 0.92, z: p.z * 0.92 };
+    } else base = leaving ? { x: tr.sx ?? 0, z: tr.sz ?? 0 } : { x: tr.tx ?? 0, z: tr.tz ?? 0 };
+    const len = Math.hypot(base.x, base.z) || 1;
+    const out = tr.kind === 'line' ? this.bound * 0.3 * d : 0;
+    const up = tr.kind === 'line' ? 14 * d + 46 * d * d : 30 * d + 130 * d * d;
+    return new THREE.Vector3(base.x + (base.x / len) * out, up, base.z + (base.z / len) * out);
   }
 
   floatText(parent, text, y, cls) {

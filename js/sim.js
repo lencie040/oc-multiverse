@@ -1,6 +1,6 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=13';
-import { randomWild, randomTown, pathBetween } from './model.js?v=13';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=14';
+import { randomWild, randomTown, pathBetween } from './model.js?v=14';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -783,8 +783,8 @@ export class Sim {
     this.startTransit(c, 'line', from, to, 12 + d * 0.35);
   }
 
-  startTransit(c, kind, from, to, dur) {
-    c.transit = { kind, from, to, start: this.t, end: this.t + dur };
+  startTransit(c, kind, from, to, dur, extra = {}) {
+    c.transit = { kind, from, to, start: this.t, end: this.t + dur, sx: c.x, sz: c.z, ...extra };
     c.world = TRANSIT;
     c.walking = false;
     c.bubble = null;
@@ -800,14 +800,14 @@ export class Sim {
   transitProgress(tr) { return Math.min(1, Math.max(0, (this.t - tr.start) / (tr.end - tr.start))); }
 
   arrive(c) {
-    const { kind, from, to } = c.transit;
+    const { kind, from, to, tx, tz } = c.transit;
     c.transit = null;
     const tw = this.m.worlds.get(to);
     let p;
     if (kind === 'line') {
       const back = tw.geo.portals[from] || { x: 0, z: 0 };
       p = { x: back.x * 0.92, z: back.z * 0.92 };
-    } else p = randomTown(tw.geo);
+    } else p = tx !== undefined ? { x: tx, z: tz } : randomTown(tw.geo);
     c.world = to; c.x = p.x; c.z = p.z;
     for (const id of c.party) { const o = this.m.charById.get(id); o.world = to; o.x = p.x; o.z = p.z; }
     this.emote(c, '👋');
@@ -847,7 +847,8 @@ export class Sim {
     this.effects.push({ t: this.t, world: from, x: c.x, z: c.z, kind: 'dan' });
     this.log(`🌌 ${c.name}が世界団を越える旅に出た 「${this.wname(from)}」(${this.m.worlds.get(from).dan})→「${tw.name}」(${tw.dan})　今日は力が半減`, from, [c.id], true, { kind: 'dan-travel', from, to });
     this.daily?.danJumps.push({ name: c.name, from, to });
-    this.startTransit(c, 'dan', from, to, rand(90, 120));
+    const land = randomTown(tw.geo);
+    this.startTransit(c, 'dan', from, to, rand(90, 120), { tx: land.x, tz: land.z });
   }
 
   // ---------- 野宿 ----------

@@ -1,5 +1,5 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=13';
+import { weighted } from './util.js?v=14';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
@@ -123,6 +123,10 @@ export class Director {
 
   tick() {
     if (!this.on) return;
+    // 移動中のキャラを映している間は、到着するまで他の小さな出来事に切り替えない
+    const { app } = this;
+    const sel = app.following && app.selected && app.model.charById.get(app.selected);
+    if (sel && app.sim.transitOf(sel)) { this.until = Math.max(this.until, now() + 4); this.prio = Math.max(this.prio, 60); }
     if (now() > this.until) this.pickIdle();
     this.shot = this.chooseShot();
   }

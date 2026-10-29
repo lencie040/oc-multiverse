@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=13';
-import { Sim } from './sim.js?v=13';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=13';
-import { UI } from './ui.js?v=13';
-import { Director } from './director.js?v=13';
-import { Sound, moodOf } from './audio.js?v=13';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=13';
+import { buildModel } from './model.js?v=14';
+import { Sim } from './sim.js?v=14';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=14';
+import { UI } from './ui.js?v=14';
+import { Director } from './director.js?v=14';
+import { Sound, moodOf } from './audio.js?v=14';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=14';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
@@ -190,7 +190,10 @@ class App {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
-    if (this.speed) this.sim.update((dt / REAL_SEC_PER_GAME_MIN) * this.speed);
+    // 追跡中のキャラが移動している間は、見逃さないよう最大×5に抑える
+    const sel = this.following && this.selected && this.model.charById.get(this.selected);
+    const speed = sel && this.sim.transitOf(sel) ? Math.min(this.speed, 5) : this.speed;
+    if (speed) this.sim.update((dt / REAL_SEC_PER_GAME_MIN) * speed);
     this.view.update(dt);
     this.ui.tick(dt);
     this.director.tick();
