@@ -111,23 +111,23 @@ kbd { display: inline-block; min-width: 18px; text-align: center; padding: 0 4px
 
 /* 3D ラベル */
 .dan-label, .world-label, .portal-label, .letter-label, .clabel, .bubble, .mon-label { font-family: var(--font); pointer-events: none; white-space: nowrap; }
-.dan-label { text-align: center; color: #fff; text-shadow: 0 2px 8px #000; transition: transform .15s; }
+.dan-label { text-align: center; color: #fff; text-shadow: 0 2px 8px #000; transition: scale .15s; }
 .dan-label b { font-size: 46px; display: block; line-height: 1; }
 .dan-label small { font-size: 14px; color: #cdd3ff; }
 .dan-label span { display: block; font-size: 13px; color: #cdd3ff; }
-.dan-label.hot { transform: scale(1.15); }
-.world-label { text-align: center; color: #fff; text-shadow: 0 1px 4px #000, 0 0 2px #000; font-size: 11px; transition: transform .15s; }
+.dan-label.hot { scale: 1.15; }
+.world-label { text-align: center; color: #fff; text-shadow: 0 1px 4px #000, 0 0 2px #000; font-size: 11px; transition: scale .15s; }
 .world-label b { font-size: 13px; display: block; }
 .world-label small, .world-label span { display: none; color: #c8ceff; font-size: 11px; }
-.world-label.hot { transform: scale(1.25); z-index: 5; background: rgba(10, 12, 30, .8); padding: 4px 10px; border-radius: 10px; }
+.world-label.hot { scale: 1.25; z-index: 5; background: rgba(10, 12, 30, .8); padding: 4px 10px; border-radius: 10px; }
 .world-label.hot small, .world-label.hot span { display: block; }
 .letter-label { font-size: 60px; font-weight: 800; color: rgba(160, 180, 255, .16); }
 .portal-label { background: rgba(10, 12, 30, .75); color: #fff; padding: 3px 10px; border-radius: 999px; font-size: 13px; border: 1px solid rgba(255,255,255,.25); }
 .portal-label.hot { background: var(--accent); color: #222; }
-.clabel { font-size: 11px; color: #fff; background: rgba(10, 12, 30, .6); padding: 1px 7px 1px 2px; border-radius: 999px; display: flex; align-items: center; gap: 3px; transform: translateY(-50%); }
+.clabel { font-size: 11px; color: #fff; background: rgba(10, 12, 30, .6); padding: 1px 7px 1px 2px; border-radius: 999px; display: flex; align-items: center; gap: 3px; }
 .clabel i { font-style: normal; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; }
 .clabel.hot { background: var(--accent); color: #222; }
-.bubble { background: #fff; color: #222; font-size: 12px; padding: 4px 10px; border-radius: 12px; position: relative; transform: translateY(-50%); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.bubble { background: #fff; color: #222; font-size: 12px; padding: 4px 10px; border-radius: 12px; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 .bubble::after { content: ""; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-top-color: #fff; border-bottom: 0; }
 .mon-label { font-size: 10px; color: #ffb0b0; text-shadow: 0 1px 3px #000; }
 
