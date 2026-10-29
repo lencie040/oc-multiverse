@@ -139,3 +139,7 @@ body.nopanels #events, body.nopanels #info { display: none; }
   #search { width: 170px; }
   #help span:not(#legend) { display: none; }
 }
+
+/* ラベルは下端中央を3D上の点に固定し、上へ伸びる */
+.lbl-anchor { width: 0; height: 0; }
+.lbl-anchor > div { position: absolute; left: 0; bottom: 0; transform: translateX(-50%); transform-origin: 50% 100%; }

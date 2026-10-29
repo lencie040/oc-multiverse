@@ -9,6 +9,7 @@ import { CATS } from './sim.js';
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
   const el = document.createElement('div');
+  el.className = 'lbl-anchor';
   const inner = document.createElement('div');
   inner.className = cls;
   inner.innerHTML = html;
