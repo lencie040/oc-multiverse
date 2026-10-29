@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=12';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=12';
-import { CATS } from './sim.js?v=12';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=13';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=13';
+import { CATS } from './sim.js?v=13';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -156,8 +156,12 @@ class BaseView {
       const pts = [];
       for (let i = 0; i <= 20; i++) pts.push(posOf(tr, (f * i) / 20));
       tk.trail.geometry.setFromPoints(pts);
-      const H = size * (c.id === this.app.selected ? 1.4 : 1);
+      // 引いて見ていても豆粒にならないよう、画面上の大きさに下限を設ける
+      const camD = this.camera.position.distanceTo(tk.g.position);
+      const H = Math.max(size, camD * 0.045) * (c.id === this.app.selected ? 1.4 : 1);
       tk.sp.scale.set(H * (tk.tex.ready && c.img ? tk.tex.aspect : 1), H, 1);
+      tk.glowSp.scale.setScalar(H * 2.2);
+      tk.lb.position.y = H * 0.75;
       const left = Math.max(1, Math.ceil(tr.end - sim.t));
       const html = `${tr.kind === 'dan' ? '🌌' : '🌀'} ${escapeHtml(c.name)}${c.party.length ? ` +${c.party.length}` : ''}<small>→ ${escapeHtml(sim.wname(tr.to))}（あと${left}分）</small>`;
       if (html !== tk.last) { tk.lb.inner.innerHTML = html; tk.last = html; }
@@ -181,6 +185,7 @@ class BaseView {
     const glowSp = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT, color: '#fff3a0', transparent: true, opacity: 0.55, depthWrite: false }));
     glowSp.scale.setScalar(size * 2.2);
     g.add(glowSp);
+    g.renderOrder = 10;
     const lb = label('', 'travel-label');
     lb.position.y = size * 0.75;
     g.add(lb);
@@ -189,7 +194,7 @@ class BaseView {
     g.userData = { pick: true, onClick: () => this.app.selectChar(c.id), onHover: (on) => lb.inner.classList.toggle('hot', on) };
     this.scene.add(g, trail);
     this.pickables.push(g);
-    return { g, sp, lb, tex, trail, last: '' };
+    return { g, sp, glowSp, lb, tex, trail, last: '' };
   }
   // 追跡中のキャラが移動中ならコマを追いかけ、到着したら世界線へ
   followTraveler(dt) {
@@ -202,6 +207,16 @@ class BaseView {
     if (!tk) return;
     const tgt = this.controls.target;
     const p = tk.g.position;
+    // マップに切り替わった直後や遠く離れている時は、すぐにキャラの近くへカメラを移す
+    if (!this.followSnapped || tgt.distanceTo(p) > 120) {
+      this.followSnapped = true;
+      const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(tgt));
+      sph.radius = this.kind === 'universe' ? 70 : 40;
+      sph.phi = Math.PI / 2 - 0.4;
+      tgt.copy(p);
+      this.camera.position.copy(p).add(new THREE.Vector3().setFromSpherical(sph));
+      return;
+    }
     const k = Math.min(1, dt * 3);
     const delta = new THREE.Vector3((p.x - tgt.x) * k, (p.y - tgt.y) * k, (p.z - tgt.z) * k);
     tgt.add(delta);
