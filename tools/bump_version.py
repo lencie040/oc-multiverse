@@ -12,6 +12,7 @@ for f in files:
     s = open(f, encoding="utf-8").read()
     s2 = re.sub(r"""(from '\./[\w-]+\.js)(\?v=\w+)?'""", rf"\1?v={v}'", s)
     s2 = re.sub(r'(href="style\.css|src="js/main\.js)(\?v=\w+)?"', rf'\1?v={v}"', s2)
+    s2 = re.sub(r"""(fetch\('data/data\.json)(\?v=\w+)?'""", rf"\1?v={v}'", s2)
     if s2 != s:
         open(f, "w", encoding="utf-8").write(s2)
         print("updated", os.path.relpath(f, ROOT))

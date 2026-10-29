@@ -18,6 +18,10 @@ def fetch(gid):
         return list(csv.reader(io.StringIO(r.read().decode("utf-8"))))
 
 
+# キャラがいない等でシートから世界団を決められない世界線の指定
+WORLD_DAN = {"B32": "𡻦"}  # 勉界
+
+
 def num(s):
     try:
         return int(float(s))
@@ -72,7 +76,9 @@ def main():
 
     suffix_dan = {"ex": "壞", "if": "𡻦", "sp": "𢜤"}
     for hani, w in worlds.items():
-        if hani in dan_votes:
+        if hani in WORLD_DAN:
+            w["dan"] = WORLD_DAN[hani]
+        elif hani in dan_votes:
             w["dan"] = max(dan_votes[hani].items(), key=lambda kv: kv[1])[0]
         else:
             sfx = re.search(r"(ex|if|sp)$", hani)

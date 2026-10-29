@@ -1,6 +1,6 @@
 // ローポリの構造物・自然物
 import * as THREE from 'three';
-import { FONT } from './util.js?v=14';
+import { FONT } from './util.js?v=15';
 
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
