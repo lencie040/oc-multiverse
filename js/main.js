@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=9';
-import { Sim } from './sim.js?v=9';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=9';
-import { UI } from './ui.js?v=9';
-import { Director } from './director.js?v=9';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=9';
+import { buildModel } from './model.js?v=11';
+import { Sim } from './sim.js?v=11';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=11';
+import { UI } from './ui.js?v=11';
+import { Director } from './director.js?v=11';
+import { Sound, moodOf } from './audio.js?v=11';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=11';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
@@ -21,6 +22,8 @@ class App {
     } catch (e) { /* 保存データなし */ }
 
     this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true };
+    this.sound = new Sound();
+    this.sim.listen((e) => this.eventSound(e));
     this.speed = 1;
     this.keys = {};
     this.selected = null;
@@ -56,6 +59,7 @@ class App {
   // ---------- 画面遷移 ----------
   setView(v, hash) {
     this.view?.dispose();
+    if (this.view) this.sound.play('whoosh');
     this.view = v;
     this.view.resize();
     if (location.hash !== hash) { this.ignoreHash = true; location.hash = hash; }
@@ -132,7 +136,7 @@ class App {
     let down = null;
     el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
     el.addEventListener('pointerup', (e) => {
-      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) this.view.click(ndc(e));
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5 && this.view.click(ndc(e))) this.sound.play('click');
       down = null;
     });
     el.addEventListener('pointermove', (e) => {
@@ -153,11 +157,33 @@ class App {
       else if (e.code === 'KeyP') this.setSpeed(this.speed === 0 ? 1 : 0);
       else if (e.code === 'KeyT') this.toggleFollow();
       else if (e.code === 'KeyO') this.director.toggle();
+      else if (e.code === 'KeyM') this.ui.toggleMute();
       else if (e.code === 'KeyH') document.body.classList.toggle('nopanels');
       else if (e.code === 'KeyN') { const cb = document.getElementById('tg-names'); cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
     });
     addEventListener('keyup', (e) => { this.keys[e.code] = false; });
     addEventListener('blur', () => { this.keys = {}; });
+  }
+
+  // 今見ている場所に合わせて曲を変える (世界線ごとに別のメロディ、レイド中はバトル曲)
+  updateMusic() {
+    const v = this.view;
+    if (v.kind !== 'world') return this.sound.setMood('space', false, v.kind === 'dan' ? 'dan:' + v.danId : 'space');
+    const r = this.sim.raidAt(v.worldId);
+    const h = this.sim.hour;
+    this.sound.setMood(r ? 'battle' : moodOf(v.world), h >= 21 || h < 5, r ? 'raid:' + r.id : v.worldId);
+  }
+  eventSound(e) {
+    const here = this.view?.kind === 'world' && e.world === this.view.worldId;
+    const t = e.text;
+    const big = [['🐉', 'horn'], ['🏆', 'fanfare'], ['💥', 'lose'], ['🌌', 'dan'], ['💎', 'treasure'], ['💕', 'heart'], ['📣', 'chime'], ['🥊', 'boss']];
+    for (const [k, name] of big) if (t.startsWith(k)) return this.sound.play(name);
+    if (!here) return;
+    if (t.startsWith('🌀') || t.includes('に到着した')) this.sound.play('portal');
+    else if (t.startsWith('🧭')) this.sound.play('treasure');
+    else if (t.startsWith('💫')) this.sound.play('lose');
+    else if (t.startsWith('🔥')) this.sound.play('boss');
+    else if (/^(⛺|🏠|🤝|🙅|🎒)/.test(t)) this.sound.play('chime');
   }
 
   frame() {
@@ -168,6 +194,7 @@ class App {
     this.view.update(dt);
     this.ui.tick(dt);
     this.director.tick();
+    this.updateMusic();
     this.renderer.render(this.view.scene, this.view.camera);
     this.labels.render(this.view.scene, this.view.camera);
   }

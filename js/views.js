@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=9';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=9';
-import { CATS } from './sim.js?v=9';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=11';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=11';
+import { CATS } from './sim.js?v=11';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -739,7 +739,11 @@ export class WorldView extends BaseView {
       if (c.bubble && camD < 160) {
         u.bl.visible = true;
         u.bl.position.y = H + 2.2;
-        if (u.bubLast !== c.bubble.text) { u.bl.element.textContent = c.bubble.text; u.bubLast = c.bubble.text; }
+        if (u.bubLast !== c.bubble.text) {
+          u.bl.element.textContent = c.bubble.text;
+          u.bubLast = c.bubble.text;
+          if (camD < 70) this.app.sound.play('talk');
+        }
       } else u.bl.visible = false;
       // リアクションの絵文字・戦闘のダメージ表示
       if (c.emote && c.emote.n !== u.emoteN) {
@@ -863,6 +867,7 @@ export class WorldView extends BaseView {
 
   floatText(parent, text, y, cls) {
     if (this.floats.length > 120) return;
+    this.app.sound.play(cls === 'emote' ? 'pop' : cls);
     const lb = label(escapeHtml(text), `float-${cls}`);
     lb.position.set((Math.random() - 0.5) * 1.6, y, (Math.random() - 0.5) * 0.6);
     parent.add(lb);

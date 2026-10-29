@@ -103,8 +103,8 @@ a.wchip:hover { background: rgba(255,255,255,.18); }
 #wtitle p { margin: 0; color: #dfe3ff; }
 
 /* 下部ヘルプ */
-#help { position: fixed; bottom: 10px; left: 10px; right: 10px; z-index: 9; display: flex; gap: 14px; align-items: center; color: var(--muted); font-size: 12px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
-#legend { margin-left: auto; display: flex; gap: 10px; }
+#help { position: fixed; bottom: 10px; left: 10px; right: 10px; z-index: 9; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; color: var(--muted); font-size: 12px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+#legend { display: flex; gap: 10px; }
 kbd { display: inline-block; min-width: 18px; text-align: center; padding: 0 4px; margin-right: 2px; border-radius: 4px; background: rgba(255,255,255,.12); color: var(--text); font-family: inherit; font-size: 11px; }
 
 #loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; background: var(--bg); font-size: 18px; color: var(--muted); }
@@ -137,7 +137,8 @@ body.nopanels #events, body.nopanels #info { display: none; }
   #events { width: 250px; }
   #info { width: 280px; }
   #search { width: 170px; }
-  #help span:not(#legend) { display: none; }
+  #help > span:not(#legend):not(#soundbox) { display: none; }
+  #legend { display: none; }
   #toggles { font-size: 11px; gap: 6px; }
   .topbtn { padding: 4px 8px; font-size: 12px; }
 }
@@ -204,3 +205,11 @@ body.nopanels #events, body.nopanels #info { display: none; }
 .rank-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .rank-grid .rk b { font-size: 12px; color: var(--muted); }
 .medal { width: 20px; text-align: center; flex: none; }
+
+/* 音 */
+#soundbox { display: flex; align-items: center; gap: 8px; margin-left: auto; white-space: nowrap; }
+#soundbox + #legend { margin-left: 12px; }
+#tg-sound { background: rgba(255,255,255,.08); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; padding: 2px 8px; font-size: 14px; }
+#soundbox label { display: flex; align-items: center; gap: 4px; }
+#soundbox input[type=range] { width: 70px; accent-color: var(--accent); }
+#track { color: var(--accent); min-width: 110px; }

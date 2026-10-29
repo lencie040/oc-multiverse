@@ -1,7 +1,7 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=9';
-import { prioOf } from './director.js?v=9';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=9';
+import { CATS } from './sim.js?v=11';
+import { prioOf } from './director.js?v=11';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=11';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -29,6 +29,15 @@ export class UI {
     $('#tg-toast').addEventListener('change', (e) => { app.settings.toasts = e.target.checked; });
     $('#news').addEventListener('click', (e) => { if (e.target.id === 'news' || e.target.closest('.x')) $('#news').hidden = true; });
     this.shownReport = app.sim.report?.id ?? 0;
+    // 音
+    const snd = app.sound;
+    $('#vol-bgm').value = Math.round(snd.bgmVol * 100);
+    $('#vol-se').value = Math.round(snd.seVol * 100);
+    $('#tg-sound').textContent = snd.muted ? '🔇' : '🔊';
+    $('#tg-sound').addEventListener('click', () => this.toggleMute());
+    $('#vol-bgm').addEventListener('input', (e) => snd.setVolumes({ bgm: e.target.value / 100 }));
+    $('#vol-se').addEventListener('input', (e) => { snd.setVolumes({ se: e.target.value / 100 }); snd.play('click'); });
+    document.addEventListener('click', (e) => { if (e.target.closest('button, .row, .ev, .r, a.wchip, .raidbox, .toast')) snd.play('click'); });
     $('#tg-minor').addEventListener('change', (e) => { app.settings.minor = e.target.checked; this.renderEvents(); });
     document.querySelector('#events .tabs').addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -113,6 +122,8 @@ export class UI {
     const h = sim.hour;
     $('#clk-icon').textContent = h >= 22 || h < 5 ? '🌙' : h < 7 ? '🌅' : h < 17.5 ? '☀️' : h < 20 ? '🌇' : '🌙';
     $('#clk-text').textContent = tm.text;
+    const tr = this.app.sound.trackName;
+    if (tr !== this.lastTrack) { $('#track').textContent = tr; this.lastTrack = tr; }
     const rep = this.app.sim.report;
     if (rep && rep.id !== this.shownReport && this.app.settings.news) this.showNews();
     if ((this.infoT -= dt) <= 0) { this.renderInfo(); this.infoT = 0.5; }
@@ -141,6 +152,13 @@ export class UI {
     if (box.firstElementChild && !box.firstElementChild.dataset.w) box.innerHTML = '';
     box.insertAdjacentHTML('afterbegin', this.evHtml(e));
     while (box.children.length > 150) box.lastElementChild.remove();
+  }
+
+  toggleMute() {
+    const snd = this.app.sound;
+    snd.init();
+    snd.setVolumes({ muted: !snd.muted });
+    $('#tg-sound').textContent = snd.muted ? '🔇' : '🔊';
   }
 
   // ---------- 実況テロップ ----------
@@ -193,6 +211,7 @@ export class UI {
       + `<h4>🌌 世界団を越えたキャラ</h4>${li(r.danJumps, (x) => `${escapeHtml(x.name)}（${escapeHtml(wn(x.from))} → ${escapeHtml(wn(x.to))}）`)}`
       + `</div>`;
     box.hidden = false;
+    this.app.sound.play('paper');
     // おまかせ観戦中は少し読んだら自動で閉じる
     clearTimeout(this.newsTimer);
     if (this.app.director.on && !force) this.newsTimer = setTimeout(() => { box.hidden = true; }, 15000);
