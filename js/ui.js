@@ -1,6 +1,6 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=6';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=6';
+import { CATS } from './sim.js?v=7';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=7';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -69,6 +69,12 @@ export class UI {
     return link
       ? `<a class="wchip" data-w="${escapeHtml(id)}" style="--c:${w.theme.ground}">${escapeHtml(w.name)}</a>`
       : `<span class="wchip" style="--c:${w.theme.ground}">${escapeHtml(w.name)}</span>`;
+  }
+
+  // 今いる場所 (移動中なら 出発→到着)
+  whereChip(c, link = false) {
+    const tr = this.app.sim.transitOf(c);
+    return tr ? `${tr.kind === 'dan' ? '🌌' : '🌀'}${this.wchip(tr.from, link)}→${this.wchip(tr.to, link)}` : this.wchip(c.world, link);
   }
 
   // ---------- パンくず・タイトル ----------
@@ -154,7 +160,7 @@ export class UI {
       sel = 0;
       let html = '';
       if (ws.length) html += '<div class="grp">世界線</div>' + ws.map((w) => `<div class="r">${this.wchip(w.id)}<span>${escapeHtml(w.yomi)}</span><small>${escapeHtml(w.id)} ・ ${escapeHtml(w.dan)}</small></div>`).join('');
-      if (cs.length) html += '<div class="grp">キャラクター</div>' + cs.map((c) => `<div class="r"><span>${escapeHtml(c.name)}</span><small>${this.wchip(c.world)}</small></div>`).join('');
+      if (cs.length) html += '<div class="grp">キャラクター</div>' + cs.map((c) => `<div class="r"><span>${escapeHtml(c.name)}</span><small>${this.whereChip(c)}</small></div>`).join('');
       res.innerHTML = html || '<div class="grp">見つかりません</div>';
       res.hidden = false;
       res.querySelectorAll('.r').forEach((el, i) => el.addEventListener('pointerdown', (e) => { e.preventDefault(); go(items[i]); }));
@@ -228,21 +234,23 @@ export class UI {
       + this.raidBoxes()
       + `<h3>みんなの今</h3>${this.breakdown(model.chars)}`
       + `<h3>世界団</h3><div class="list">${model.dans.map((d) => {
-        const n = model.chars.filter((c) => model.worlds.get(c.world).dan === d.id).length;
+        const n = model.chars.filter((c) => model.worlds.get(c.world)?.dan === d.id).length;
         return `<div class="row" data-dan="${escapeHtml(d.id)}"><i class="ico" style="background:${d.color}"></i>${escapeHtml(d.id)}（${escapeHtml(d.yomi)}）<small>世界線 ${d.worlds.length} ・ 滞在 ${n}人</small></div>`;
       }).join('')}</div>`
-      + `<h3>旅をしているキャラ</h3><div class="list">${model.chars.filter((c) => c.trip && !c.partyLeader).map((c) => this.charRow(c, this.wchip(c.world))).join('') || '<div class="sub">今はいません</div>'}</div>`
+      + `<h3>旅をしているキャラ</h3><div class="list">${model.chars.filter((c) => c.trip && !c.partyLeader).map((c) => this.charRow(c, this.whereChip(c))).join('') || '<div class="sub">今はいません</div>'}</div>`
       + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。ランク9以上は1日3回まで隣の世界線へ移動でき、ランク10以上は余裕のあるランク分だけ同じ汎異記号の仲間を連れていけます。ランク11以上は3日に1回だけ世界団を越えられます（その日は力が半減）。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。</div>`;
   }
 
   danInfo(d) {
     const { model, sim } = this.app;
     const ws = d.worlds.map((id) => model.worlds.get(id)).sort((a, b) => a.letter.localeCompare(b.letter) || a.num - b.num);
-    const here = model.chars.filter((c) => model.worlds.get(c.world).dan === d.id);
+    const here = model.chars.filter((c) => model.worlds.get(c.world)?.dan === d.id);
+    const flying = model.chars.filter((c) => c.transit?.kind === 'line' && model.worlds.get(c.transit.from).dan === d.id);
     return `<h2>世界団 ${escapeHtml(d.id)}</h2><div class="sub">${escapeHtml(d.yomi)} ・ 球体をクリックで世界線へ</div>`
       + `<div class="kv"><span>世界線</span><span>${ws.length}</span><span>滞在中</span><span>${here.length}人</span></div>`
       + this.raidBoxes((r) => model.worlds.get(r.world).dan === d.id)
       + `<h3>みんなの今</h3>${this.breakdown(here)}`
+      + (flying.length ? `<h3>🌀 移動中（${flying.length}組）</h3><div class="list">${flying.map((c) => this.charRow(c, `${this.wchip(c.transit.from)}→${this.wchip(c.transit.to)}`)).join('')}</div>` : '')
       + `<h3>世界線一覧</h3><div class="list">${ws.map((w) => {
         const n = sim.charsIn(w.id).length, m = sim.monsters.get(w.id).length;
         return `<div class="row" data-w="${escapeHtml(w.id)}">${this.wchip(w.id)}<small>${escapeHtml(w.id)} ・ 👤${n}${m ? ` 👾${m}` : ''}</small></div>`;
@@ -263,7 +271,7 @@ export class UI {
       + `<h3>隣の世界線</h3><div>${w.neighbors.map((id) => this.wchip(id, true)).join('') || '<span class="sub">なし</span>'}</div>`
       + `<h3>みんなの今</h3>${this.breakdown(present)}`
       + `<h3>ここにいるキャラ（${present.length}）</h3><div class="list">${present.sort((a, b) => b.rank - a.rank).map((c) => this.charRow(c, c.home !== w.id ? `🧳 ${escapeHtml(sim.displayAct(c).text)}` : undefined)).join('') || '<div class="sub">誰もいません</div>'}</div>`
-      + (away.length ? `<h3>お出かけ中の住人（${away.length}）</h3><div class="list">${away.map((c) => this.charRow(c, this.wchip(c.world))).join('')}</div>` : '');
+      + (away.length ? `<h3>お出かけ中の住人（${away.length}）</h3><div class="list">${away.map((c) => this.charRow(c, this.whereChip(c))).join('')}</div>` : '');
   }
 
   charInfo(c) {
@@ -284,9 +292,9 @@ export class UI {
       + `<div class="avatar">${avatar}</div>`
       + `<h2>${escapeHtml(c.name)}</h2><div class="sub">${escapeHtml(c.yomi)} ・ No.${escapeHtml(c.id)}</div>`
       + `<div class="btns"><button class="btn ${following ? 'on' : ''}" data-act="follow">🎥 ${following ? '追跡中' : '追跡する'} (T)</button>`
-      + (this.app.view.worldId !== c.world ? `<button class="btn" data-c="${escapeHtml(c.id)}">📍 いる場所へ</button>` : '') + `</div>`
+      + (this.app.view.worldId !== c.world || sim.transitOf(c) ? `<button class="btn" data-c="${escapeHtml(c.id)}">📍 いる場所へ</button>` : '') + `</div>`
       + `<h3>いま</h3><div class="row" style="cursor:default"><i class="ico" style="background:${CATS[d.cat]?.color}">${d.icon}</i>${escapeHtml(d.text)}</div>`
-      + `<div class="kv"><span>現在地</span><span>${this.wchip(c.world, true)}${c.world !== c.home ? '（旅行中）' : '（家）'}</span>`
+      + `<div class="kv"><span>現在地</span><span>${this.whereChip(c, true)}${sim.transitOf(c) ? '（移動中）' : c.world !== c.home ? '（旅行中）' : '（家）'}</span>`
       + `<span>所属世界線</span><span>${this.wchip(c.home, true)} ${escapeHtml(c.hani)}</span><span>世界団</span><span>${escapeHtml(home.dan)}</span>`
       + `<span>ランク</span><span>${c.rank}</span><span>レベル</span><span>50</span>`
       + `<span>戦闘力</span><span>${pw}${c.halvedDay === sim.day ? '（世界団移動で半減中）' : ''}${c.trainDay === sim.day ? '（修行で1割増し）' : ''}</span>`

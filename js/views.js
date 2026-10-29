@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=6';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=6';
-import { CATS } from './sim.js?v=6';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=7';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=7';
+import { CATS } from './sim.js?v=7';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -123,6 +123,76 @@ class BaseView {
     o?.userData.onClick?.();
     return !!o;
   }
+  // 移動中のキャラのコマ (世界団マップ・宇宙マップ共通)
+  syncTravelers(filter, posOf, size) {
+    const { model, sim } = this.app;
+    this.tokens ??= new Map();
+    const seen = new Set();
+    for (const c of model.chars) {
+      const tr = c.transit;
+      if (!tr || !filter(tr)) continue;
+      seen.add(c.id);
+      let tk = this.tokens.get(c.id);
+      if (!tk) { tk = this.makeToken(c, size); this.tokens.set(c.id, tk); }
+      const f = sim.transitProgress(tr);
+      tk.g.position.copy(posOf(tr, f));
+      const pts = [];
+      for (let i = 0; i <= 20; i++) pts.push(posOf(tr, (f * i) / 20));
+      tk.trail.geometry.setFromPoints(pts);
+      const H = size * (c.id === this.app.selected ? 1.4 : 1);
+      tk.sp.scale.set(H * (tk.tex.ready && c.img ? tk.tex.aspect : 1), H, 1);
+      const left = Math.max(1, Math.ceil(tr.end - sim.t));
+      const html = `${tr.kind === 'dan' ? '🌌' : '🌀'} ${escapeHtml(c.name)}${c.party.length ? ` +${c.party.length}` : ''}<small>→ ${escapeHtml(sim.wname(tr.to))}（あと${left}分）</small>`;
+      if (html !== tk.last) { tk.lb.inner.innerHTML = html; tk.last = html; }
+    }
+    for (const [id, tk] of this.tokens) {
+      if (seen.has(id)) continue;
+      tk.g.traverse((x) => { if (x.isCSS2DObject && x.element.parentNode) x.element.parentNode.removeChild(x.element); });
+      this.scene.remove(tk.g, tk.trail);
+      tk.trail.geometry.dispose();
+      this.pickables.splice(this.pickables.indexOf(tk.g), 1);
+      this.tokens.delete(id);
+    }
+  }
+  makeToken(c, size) {
+    const g = new THREE.Group();
+    const tex = charTexture(c);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.tex, transparent: true, alphaTest: 0.05, depthTest: false }));
+    sp.renderOrder = 10;
+    sp.scale.setScalar(size);
+    g.add(sp);
+    const glowSp = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT, color: '#fff3a0', transparent: true, opacity: 0.55, depthWrite: false }));
+    glowSp.scale.setScalar(size * 2.2);
+    g.add(glowSp);
+    const lb = label('', 'travel-label');
+    lb.position.y = size * 0.75;
+    g.add(lb);
+    const c1 = colorOf(c.colors[0], '#fff3a0');
+    const trail = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: c1 === 'rainbow' ? '#ffffff' : c1, transparent: true, opacity: 0.9 }));
+    g.userData = { pick: true, onClick: () => this.app.selectChar(c.id), onHover: (on) => lb.inner.classList.toggle('hot', on) };
+    this.scene.add(g, trail);
+    this.pickables.push(g);
+    return { g, sp, lb, tex, trail, last: '' };
+  }
+  // 追跡中のキャラが移動中ならコマを追いかけ、到着したら世界線へ
+  followTraveler(dt) {
+    const { app } = this;
+    if (!app.following || !app.selected) return;
+    const c = app.model.charById.get(app.selected);
+    const tr = app.sim.transitOf(c);
+    if (!tr) { app.goToChar(c, true); return true; }
+    const tk = this.tokens?.get(c.transit ? c.id : c.partyLeader);
+    if (!tk) return;
+    const tgt = this.controls.target;
+    const p = tk.g.position;
+    const k = Math.min(1, dt * 3);
+    const delta = new THREE.Vector3((p.x - tgt.x) * k, (p.y - tgt.y) * k, (p.z - tgt.z) * k);
+    tgt.add(delta);
+    this.camera.position.add(delta);
+    const off = this.camera.position.clone().sub(tgt);
+    if (off.length() > 90) this.camera.position.copy(tgt).add(off.setLength(off.length() + (90 - off.length()) * k));
+  }
+
   dispose() {
     this.controls.dispose();
     this.scene.traverse((o) => {
@@ -145,12 +215,14 @@ export class UniverseView extends BaseView {
     this.scene.add(sun);
     const n = model.dans.length;
     this.spheres = [];
+    this.danPos = new Map();
     model.dans.forEach((d, i) => {
       const a = (i / n) * Math.PI * 2;
       const R = 70;
       const radius = 8 + Math.sqrt(d.worlds.length) * 1.8;
       const g = new THREE.Group();
       g.position.set(Math.cos(a) * R, Math.sin(i * 1.7) * 10, Math.sin(a) * R);
+      this.danPos.set(d.id, { p: g.position, r: radius });
       const core = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 32),
         new THREE.MeshStandardMaterial({ color: d.color, emissive: d.color, emissiveIntensity: 0.25, roughness: 0.35, transparent: true, opacity: 0.55 }));
       g.add(core);
@@ -192,6 +264,18 @@ export class UniverseView extends BaseView {
     this.bound = 200;
   }
   update(dt) {
+    const { model } = this.app;
+    const danOf = (wid) => this.danPos.get(model.worlds.get(wid).dan);
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    this.syncTravelers((tr) => tr.kind === 'dan', (tr, f) => {
+      const A = danOf(tr.from), B = danOf(tr.to);
+      a.copy(A.p); b.copy(B.p);
+      const dir = b.clone().sub(a).normalize();
+      a.addScaledVector(dir, A.r); b.addScaledVector(dir, -B.r);
+      return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * 30, 0));
+    }, 6);
+    if (this.app.following) this.controls.autoRotate = false;
+    if (this.followTraveler(dt)) return;
     super.update(dt);
     for (const s of this.spheres) s.userData.inner.rotation.y += dt * 0.15;
   }
@@ -269,17 +353,6 @@ export class ClusterView extends BaseView {
       this.scene.add(lb);
     }
 
-    this.comets = [];
-    this.cometGeo = new THREE.SphereGeometry(0.7, 10, 8);
-    this.unsub = sim.listen((e) => {
-      if (e.extra?.kind !== 'travel') return;
-      const a = this.nodes.get(e.extra.from), b = this.nodes.get(e.extra.to);
-      if (!a || !b) return;
-      const m = new THREE.Mesh(this.cometGeo, new THREE.MeshBasicMaterial({ color: '#fff6a0' }));
-      this.scene.add(m);
-      this.comets.push({ m, a: a.g.position.clone(), b: b.g.position.clone(), t: 0 });
-    });
-
     this.camera.position.set(0, maxR * 0.6, maxR * 1.1);
     this.controls.minDistance = 10;
     this.controls.maxDistance = maxR * 5;
@@ -302,20 +375,18 @@ export class ClusterView extends BaseView {
     }
   }
   update(dt) {
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    this.syncTravelers((tr) => tr.kind === 'line' && this.nodes.has(tr.from), (tr, f) => {
+      const A = this.nodes.get(tr.from), B = this.nodes.get(tr.to);
+      a.copy(A.g.position); b.copy(B.g.position);
+      const dir = b.clone().sub(a).normalize();
+      a.addScaledVector(dir, A.r); b.addScaledVector(dir, -B.r);
+      return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * 6, 0));
+    }, 4.5);
+    if (this.followTraveler(dt)) return;
     super.update(dt);
     if ((this.refreshT -= dt) < 0) { this.refresh(); this.refreshT = 0.5; }
     for (const n of this.nodes.values()) n.g.rotation.y += dt * 0.2;
-    this.comets = this.comets.filter((c) => {
-      c.t += dt / 1.6;
-      if (c.t >= 1) { this.scene.remove(c.m); c.m.material.dispose(); return false; }
-      c.m.position.lerpVectors(c.a, c.b, c.t);
-      c.m.position.y += Math.sin(c.t * Math.PI) * 6;
-      return true;
-    });
-  }
-  dispose() {
-    this.unsub();
-    super.dispose();
   }
 }
 
@@ -600,7 +671,7 @@ export class WorldView extends BaseView {
     // 追跡
     const sel = this.app.selected ? this.app.model.charById.get(this.app.selected) : null;
     if (this.app.following && sel) {
-      if (sel.world !== this.worldId) { this.app.openWorld(sel.world, { keepFollow: true }); return; }
+      if (sel.world !== this.worldId) { this.app.goToChar(sel, true); return; }
       const tgt = this.controls.target;
       const nx = tgt.x + (sel.x - tgt.x) * Math.min(1, dt * 4), nz = tgt.z + (sel.z - tgt.z) * Math.min(1, dt * 4);
       this.camera.position.x += nx - tgt.x;

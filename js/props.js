@@ -1,6 +1,6 @@
 // ローポリの構造物・自然物
 import * as THREE from 'three';
-import { FONT } from './util.js?v=6';
+import { FONT } from './util.js?v=7';
 
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -674,6 +674,40 @@ const BUILD = {
     g.add(mesh(G.box, mat('#a04040'), 0, 1.4, 0, 0.9, 1.2, 0.5));
     for (const x of [-0.25, 0.25]) g.add(mesh(G.box, mat(c), x, 0.5, 0, 0.2, 0.8, 0.2));
     g.userData.sway = true;
+    return g;
+  },
+  pumpkin(c = '#ff8a1a', r) {
+    // ジャック・オー・ランタン
+    const g = new THREE.Group();
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      g.add(mesh(G.ball, mat(c), Math.cos(a) * 0.32, 0.75, Math.sin(a) * 0.32, 1.1, 1.3, 1.1));
+    }
+    g.add(mesh(G.cyl6, mat('#4a6a2a'), 0, 1.5, 0, 0.14, 0.45, 0.14));
+    const face = glow('#ffd23a', 1.6);
+    for (const x of [-0.32, 0.32]) {
+      const eye = mesh(G.cone4, face, x, 0.95, 0.86, 0.26, 0.24, 0.06);
+      eye.rotation.x = Math.PI / 2;
+      g.add(eye);
+    }
+    g.add(mesh(G.box, face, 0, 0.55, 0.86, 0.7, 0.14, 0.06));
+    g.scale.setScalar(1.4 + r * 0.6);
+    return g;
+  },
+  bat(c = '#2a1a33', r) {
+    const g = new THREE.Group();
+    const b = new THREE.Group();
+    b.add(mesh(G.ball, mat(c), 0, 0, 0, 0.5));
+    for (const x of [-1, 1]) {
+      const wing = mesh(G.cone4, mat(c), x * 0.55, 0.05, 0, 0.5, 0.9, 0.08);
+      wing.rotation.z = x * Math.PI / 2;
+      b.add(wing);
+    }
+    for (const x of [-0.12, 0.12]) b.add(mesh(G.ball, glow('#ff3a3a', 1.5), x, 0.08, 0.22, 0.09));
+    b.position.y = 4 + r * 4;
+    g.add(b);
+    g.userData.float = 1.2;
+    g.userData.spin = b;
     return g;
   },
   banner(c, r) {

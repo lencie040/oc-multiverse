@@ -75,7 +75,7 @@ const T = {
   画界: ['#f6efe3', '#c6e2ff', 'easel:4,flower:2,tree:2', 'petal', 'easel', 'お絵かき'],
   戯界: ['#c74f8b', '#3a1f4a', 'stage:2,ball:2,banner:2,crate:1', 'spark', 'stage', 'ボードゲーム'],
   劇界: ['#8a1f2f', '#1e0a10', 'stage:2,banner#c0283a:3,lamp:2', 'spark', 'stage', '演劇の稽古'],
-  橙界: ['#ff9a2e', '#ffd8a6', 'fruittree#ff9a2e:4,bush:2', 'leaf', 'bigtree', 'みかん狩り'],
+  橙界: ['#9a4a1e', '#3a1f4a', 'pumpkin:5,tree#3a2a3a:3,tomb:2,lantern#ff8a1a:2,bat:2', 'ember', 'pumpkin', '仮装,お菓子集め,ジャック・オー・ランタン作り'],
   夏界: ['#f0d890', '#6fd0ff', 'palm:3,parasol:3,pond:2', 'leaf', 'parasol', 'スイカ割り,水泳'],
   夜界: ['#26305a', '#070b1e', 'lamp:3,star:2,tree#1e2a4a:2', 'star', 'tower', '天体観測'],
   宵界: ['#7a4a7a', '#ff8a6a', 'lantern:3,tree#5a3a5a:2,lamp:1', 'wisp', 'torii', '夕涼み'],

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=6';
-import { Sim } from './sim.js?v=6';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=6';
-import { UI } from './ui.js?v=6';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=6';
+import { buildModel } from './model.js?v=7';
+import { Sim } from './sim.js?v=7';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=7';
+import { UI } from './ui.js?v=7';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=7';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
@@ -66,13 +66,27 @@ class App {
     if (m && m[1] === 'dan' && this.model.danById.has(m[2])) return this.openDan(m[2]);
     this.goUniverse();
   }
-  goUniverse() {
-    this.stopFollow();
+  goUniverse(opts = {}) {
+    if (!opts.keepFollow) this.stopFollow();
     this.setView(new UniverseView(this), '#/');
   }
-  openDan(id) {
-    this.stopFollow();
+  openDan(id, opts = {}) {
+    if (!opts.keepFollow) this.stopFollow();
     this.setView(new ClusterView(this, id), `#/dan/${encodeURIComponent(id)}`);
+  }
+  // キャラのいる場所を映す: 世界線にいれば世界線、移動中なら世界団マップか宇宙マップ
+  goToChar(c, keepFollow = false) {
+    const tr = this.sim.transitOf(c);
+    if (!tr) {
+      const changed = this.view?.kind !== 'world' || this.view.worldId !== c.world;
+      this.openWorld(c.world, { keepFollow });
+      if (changed || !keepFollow) this.view.focusOn(c.x, c.z);
+      return;
+    }
+    if (tr.kind === 'line') {
+      const dan = this.model.worlds.get(tr.from).dan;
+      if (!(this.view?.kind === 'dan' && this.view.danId === dan)) this.openDan(dan, { keepFollow });
+    } else if (this.view?.kind !== 'universe') this.goUniverse({ keepFollow });
   }
   openWorld(id, opts = {}) {
     if (!opts.keepFollow) this.stopFollow();
@@ -88,10 +102,7 @@ class App {
     this.selected = id;
     if (!id) { this.stopFollow(); this.ui.renderInfo(); return; }
     const c = this.model.charById.get(id);
-    if (opts.focus) {
-      this.openWorld(c.world, { keepFollow: this.following });
-      this.view.focusOn(c.x, c.z);
-    }
+    if (opts.focus) this.goToChar(c, this.following);
     this.ui.lastInfo = '';
     this.ui.renderInfo();
   }
