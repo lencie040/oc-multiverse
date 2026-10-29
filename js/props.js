@@ -1,6 +1,6 @@
 // ローポリの構造物・自然物
 import * as THREE from 'three';
-import { FONT } from './util.js';
+import { FONT } from './util.js?v=6';
 
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -748,6 +748,35 @@ export function buildMonster(boss) {
   }
   g.userData.body = body;
   if (boss) g.scale.setScalar(2);
+  return g;
+}
+
+// レイドボス: 大きな魔物 + 金の角と王冠 + 足元の赤いオーラ
+export function buildRaidBoss() {
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  body.add(mesh(G.ico, mat('#22040e', { emissive: '#4a0016', emissiveIntensity: 0.5, roughness: 0.5 }), 0, 0, 0, 2.6));
+  for (const x of [-0.5, 0, 0.5]) body.add(mesh(G.ball, glow('#ffdd33', 2), x, 0.35 - Math.abs(x) * 0.3, 1.15, 0.32));
+  for (const x of [-0.8, 0.8]) {
+    const h = mesh(G.cone, mat('#d8b040', { metalness: 0.6, roughness: 0.3 }), x, 1.3, 0, 0.45, 1.4);
+    h.rotation.z = -x * 0.5;
+    body.add(h);
+  }
+  const crown = mesh(G.torus, mat('#ffd040', { metalness: 0.8, roughness: 0.25, emissive: '#a07000', emissiveIntensity: 0.4 }), 0, 1.45, 0, 1.2);
+  crown.rotation.x = Math.PI / 2;
+  body.add(crown);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    body.add(mesh(G.cone4, mat('#1a0510'), Math.cos(a) * 1.25, -0.2, Math.sin(a) * 1.25, 0.5, 1.2));
+  }
+  body.position.y = 2;
+  g.add(body);
+  const aura = new THREE.Mesh(new THREE.RingGeometry(1.8, 2.6, 40), new THREE.MeshBasicMaterial({ color: '#ff2a5a', transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+  aura.rotation.x = -Math.PI / 2;
+  aura.position.y = 0.05;
+  g.add(aura);
+  g.scale.setScalar(3.2);
+  g.userData = { body, aura };
   return g;
 }
 

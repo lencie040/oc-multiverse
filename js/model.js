@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js';
-import { themeOf } from './themes.js';
+import { seeded, hashStr } from './util.js?v=6';
+import { themeOf } from './themes.js?v=6';
 
 export const LEVEL = 50;
 

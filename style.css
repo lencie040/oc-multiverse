@@ -78,9 +78,9 @@ a.wchip:hover { background: rgba(255,255,255,.18); }
 #info .row:hover { background: rgba(255,255,255,.08); }
 #info .row small { color: var(--muted); margin-left: auto; text-align: right; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ico { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font-size: 12px; font-style: normal; flex: none; }
-.avatar { width: 100%; height: 170px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,255,255,.05); margin-bottom: 10px; }
-.avatar img { max-width: 92%; max-height: 92%; object-fit: contain; }
-.avatar .kj { width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; font-size: 70px; font-weight: 800; border: 6px solid; }
+.avatar { width: 100%; height: 150px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.05); margin-bottom: 10px; overflow: hidden; }
+.avatar img { display: block; max-width: 100%; max-height: 136px; width: auto; height: auto; object-fit: contain; }
+.avatar .kj { width: 110px; height: 110px; border-radius: 50%; display: grid; place-items: center; font-size: 64px; font-weight: 800; border: 6px solid; }
 .bars { display: grid; grid-template-columns: 22px 1fr 34px; gap: 3px 6px; align-items: center; }
 .bars .b { height: 8px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden; }
 .bars .b i { display: block; height: 100%; background: linear-gradient(90deg, #7ab8ff, #c8a0ff); }
@@ -142,4 +142,16 @@ body.nopanels #events, body.nopanels #info { display: none; }
 
 /* ラベルは下端中央を3D上の点に固定し、上へ伸びる */
 .lbl-anchor { width: 0; height: 0; }
-.lbl-anchor > div { position: absolute; left: 0; bottom: 0; transform: translateX(-50%); transform-origin: 50% 100%; }
+.lbl-anchor > div { position: absolute; left: 0; bottom: 0; width: max-content; white-space: nowrap; transform: translateX(-50%); transform-origin: 50% 100%; }
+
+/* レイド */
+.raid-label { text-align: center; background: rgba(40, 0, 15, .85); border: 1px solid #ff3a6a; color: #fff; padding: 5px 12px; border-radius: 12px; box-shadow: 0 0 18px rgba(255, 58, 106, .5); }
+.raid-label b { display: block; font-size: 14px; color: #ffd0dc; }
+.raid-label span { display: block; font-size: 11px; color: #ffc0cc; }
+.raid-label i { display: block; font-style: normal; font-size: 12px; color: #ffe14a; }
+.world-label em.raid { display: block; font-style: normal; font-weight: 800; font-size: 12px; color: #fff; background: #ff3a6a; border-radius: 999px; padding: 1px 8px; margin-bottom: 2px; animation: raidpulse 1s ease-in-out infinite alternate; }
+@keyframes raidpulse { from { opacity: .65; } to { opacity: 1; } }
+.raidbox { border: 1px solid #ff3a6a; background: rgba(255, 58, 106, .1); border-radius: 10px; padding: 8px 10px; margin-top: 6px; cursor: pointer; }
+.raidbox:hover { background: rgba(255, 58, 106, .2); }
+.raidbox b { color: #ffb0c0; }
+.raidbox small { display: block; color: var(--muted); }

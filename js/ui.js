@@ -1,6 +1,6 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js';
+import { CATS } from './sim.js?v=6';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=6';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -173,7 +173,7 @@ export class UI {
   // ---------- 情報パネル ----------
   breakdown(chars) {
     const { sim } = this.app;
-    const cnt = { daily: 0, hobby: 0, work: 0, battle: 0, move: 0, sabori: 0 };
+    const cnt = Object.fromEntries(Object.keys(CATS).map((k) => [k, 0]));
     let down = 0, sleep = 0, travel = 0;
     for (const c of chars) {
       const d = sim.displayAct(c);
@@ -184,8 +184,20 @@ export class UI {
     }
     const total = chars.length || 1;
     return `<div class="stack">${Object.entries(cnt).map(([k, v]) => `<i style="width:${(v / total) * 100}%;background:${CATS[k].color}" title="${CATS[k].label} ${v}"></i>`).join('')}</div>`
-      + `<div class="leg">${Object.entries(cnt).map(([k, v]) => `<span><b style="background:${CATS[k].color}"></b>${CATS[k].label} ${v}</span>`).join('')}</div>`
+      + `<div class="leg">${Object.entries(cnt).filter(([k, v]) => v || k !== 'raid').map(([k, v]) => `<span><b style="background:${CATS[k].color}"></b>${CATS[k].label} ${v}</span>`).join('')}</div>`
       + `<div class="leg" style="margin-top:4px"><span>💤 睡眠 ${sleep}</span><span>💫 気絶 ${down}</span><span>🧳 旅行中 ${travel}</span></div>`;
+  }
+
+  raidBoxes(filter = () => true) {
+    const { sim } = this.app;
+    const rs = sim.raids.filter(filter);
+    if (!rs.length) return '';
+    return `<h3>🐉 発生中のレイド</h3>` + rs.map((r) => {
+      const left = Math.max(0, Math.ceil(r.until - sim.t));
+      return `<div class="raidbox" data-w="${escapeHtml(r.world)}">${this.wchip(r.world)}<b>${escapeHtml(r.name)}</b>`
+        + `<small>戦闘力 ${r.power} ・ 集まった戦力 ${Math.round(sim.raidPower(r))}（${sim.raidFighters(r).length}組）`
+        + ` ・ ${r.phase === 'fight' ? '激闘中！' : `あと${left}分で開戦`}</small></div>`;
+    }).join('');
   }
 
   charRow(c, note) {
@@ -213,13 +225,14 @@ export class UI {
     const { model, sim } = this.app;
     return `<h2>🌌 宇宙</h2><div class="sub">世界団をクリックすると中の世界線が見られます</div>`
       + `<div class="kv"><span>世界団</span><span>${model.dans.length}</span><span>世界線</span><span>${model.worlds.size}</span><span>キャラクター</span><span>${model.chars.length}</span></div>`
+      + this.raidBoxes()
       + `<h3>みんなの今</h3>${this.breakdown(model.chars)}`
       + `<h3>世界団</h3><div class="list">${model.dans.map((d) => {
         const n = model.chars.filter((c) => model.worlds.get(c.world).dan === d.id).length;
         return `<div class="row" data-dan="${escapeHtml(d.id)}"><i class="ico" style="background:${d.color}"></i>${escapeHtml(d.id)}（${escapeHtml(d.yomi)}）<small>世界線 ${d.worlds.length} ・ 滞在 ${n}人</small></div>`;
       }).join('')}</div>`
       + `<h3>旅をしているキャラ</h3><div class="list">${model.chars.filter((c) => c.trip && !c.partyLeader).map((c) => this.charRow(c, this.wchip(c.world))).join('') || '<div class="sub">今はいません</div>'}</div>`
-      + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。ランク9以上は1日3回まで隣の世界線へ移動でき、ランク10以上は余裕のあるランク分だけ同じ汎異記号の仲間を連れていけます。ランク11以上は3日に1回だけ世界団を越えられます（その日は力が半減）。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。</div>`;
+      + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。ランク9以上は1日3回まで隣の世界線へ移動でき、ランク10以上は余裕のあるランク分だけ同じ汎異記号の仲間を連れていけます。ランク11以上は3日に1回だけ世界団を越えられます（その日は力が半減）。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。</div>`;
   }
 
   danInfo(d) {
@@ -228,6 +241,7 @@ export class UI {
     const here = model.chars.filter((c) => model.worlds.get(c.world).dan === d.id);
     return `<h2>世界団 ${escapeHtml(d.id)}</h2><div class="sub">${escapeHtml(d.yomi)} ・ 球体をクリックで世界線へ</div>`
       + `<div class="kv"><span>世界線</span><span>${ws.length}</span><span>滞在中</span><span>${here.length}人</span></div>`
+      + this.raidBoxes((r) => model.worlds.get(r.world).dan === d.id)
       + `<h3>みんなの今</h3>${this.breakdown(here)}`
       + `<h3>世界線一覧</h3><div class="list">${ws.map((w) => {
         const n = sim.charsIn(w.id).length, m = sim.monsters.get(w.id).length;
@@ -245,6 +259,7 @@ export class UI {
       + `<div class="kv"><span>汎異記号</span><span>${escapeHtml(w.id)}</span><span>世界団</span><span>${escapeHtml(w.dan)}</span>`
       + `<span>魔物の多さ</span><span>${w.num === 0 ? 'なし（平和）' : `Lv.${w.num}`}</span><span>魔物</span><span>${mons.length}体${boss ? `（大魔物 ${boss}）` : ''}</span>`
       + `<span>住人</span><span>${w.residents.length}人</span><span>今いる</span><span>${present.length}人</span></div>`
+      + this.raidBoxes((r) => r.world === w.id)
       + `<h3>隣の世界線</h3><div>${w.neighbors.map((id) => this.wchip(id, true)).join('') || '<span class="sub">なし</span>'}</div>`
       + `<h3>みんなの今</h3>${this.breakdown(present)}`
       + `<h3>ここにいるキャラ（${present.length}）</h3><div class="list">${present.sort((a, b) => b.rank - a.rank).map((c) => this.charRow(c, c.home !== w.id ? `🧳 ${escapeHtml(sim.displayAct(c).text)}` : undefined)).join('') || '<div class="sub">誰もいません</div>'}</div>`
@@ -274,14 +289,14 @@ export class UI {
       + `<div class="kv"><span>現在地</span><span>${this.wchip(c.world, true)}${c.world !== c.home ? '（旅行中）' : '（家）'}</span>`
       + `<span>所属世界線</span><span>${this.wchip(c.home, true)} ${escapeHtml(c.hani)}</span><span>世界団</span><span>${escapeHtml(home.dan)}</span>`
       + `<span>ランク</span><span>${c.rank}</span><span>レベル</span><span>50</span>`
-      + `<span>戦闘力</span><span>${pw}${c.halvedDay === sim.day ? '（世界団移動で半減中）' : ''}</span>`
+      + `<span>戦闘力</span><span>${pw}${c.halvedDay === sim.day ? '（世界団移動で半減中）' : ''}${c.trainDay === sim.day ? '（修行で1割増し）' : ''}</span>`
       + `<span>世界線移動</span><span>${moves}</span><span>世界団移動</span><span>${danNext}</span>`
       + (party.length ? `<span>${c.partyLeader ? 'リーダー' : '仲間'}</span><span>${party.map((p) => escapeHtml(p.name)).join('、')}</span>` : '')
       + (c.type ? `<span>タイプ</span><span>${escapeHtml(c.type)}</span>` : '')
       + (c.zoku ? `<span>族</span><span>${escapeHtml(c.zoku)}</span>` : '')
       + (c.seiryoku ? `<span>勢力</span><span>${escapeHtml(c.seiryoku)}</span>` : '')
       + `<span>仕事</span><span>${escapeHtml(c.job)}</span><span>趣味</span><span>${c.hobbies.map(escapeHtml).join('、')}</span>`
-      + `<span>記録</span><span>魔物退治 ${c.kills} ・ 気絶 ${c.downs} ・ 移動 ${c.travels}</span></div>`
+      + `<span>記録</span><span>魔物退治 ${c.kills} ・ レイド勝利 ${c.raidWins} ・ 気絶 ${c.downs} ・ 移動 ${c.travels} ・ 発見した宝物 ${c.treasures}</span></div>`
       + `<h3>種族値</h3><div class="bars">${c.stats.map((v, i) => `<span>${STAT_NAMES[i]}</span><span class="b"><i style="width:${Math.min(100, (v / maxStat) * 100)}%"></i></span><span>${v}</span>`).join('')}</div>`
       + `<h3>最近の出来事</h3><div class="mlog">${c.log.slice().reverse().map((e) => { const t = fmtTime(e.t); return `<div>${t.day}日目 ${t.hh}:${t.mm} ${escapeHtml(e.text)}</div>`; }).join('') || 'まだありません'}</div>`;
   }

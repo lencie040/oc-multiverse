@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, mat } from './props.js';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js';
-import { CATS } from './sim.js';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=6';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=6';
+import { CATS } from './sim.js?v=6';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -294,7 +294,9 @@ export class ClusterView extends BaseView {
       const present = sim.charsIn(wid);
       const visitors = present.filter((c) => c.home !== wid).length;
       const mons = sim.monsters.get(wid).length;
-      const html = (show ? `<b>${escapeHtml(n.w.name)}</b><small>${escapeHtml(wid)}</small>` : '')
+      const raid = sim.raidAt(wid);
+      const html = (raid ? `<em class="raid">🐉 レイド${raid.phase === 'fight' ? '激闘中' : '発生中'}</em>` : '')
+        + (show ? `<b>${escapeHtml(n.w.name)}</b><small>${escapeHtml(wid)}</small>` : '')
         + `<span>👤${present.length}${visitors ? ` 🧳${visitors}` : ''}${mons ? ` 👾${mons}` : ''}</span>`;
       if (html !== n.last) { n.lb.inner.innerHTML = html; n.last = html; }
     }
@@ -521,6 +523,7 @@ export class WorldView extends BaseView {
 
     this.charObjs = new Map();
     this.monObjs = new Map();
+    this.raidObjs = new Map();
     this.tents = new Map();
     this.fx = [];
     this.fxSeen = new Set();
@@ -710,6 +713,38 @@ export class WorldView extends BaseView {
       o.userData.lb.visible = settings.names;
     }
     for (const id of [...this.monObjs.keys()]) if (!alive.has(id)) this.removeObj(this.monObjs, id);
+
+    // レイドボス
+    const raids = new Set();
+    for (const r of sim.raids) {
+      if (r.world !== this.worldId) continue;
+      raids.add(r.id);
+      let o = this.raidObjs.get(r.id);
+      if (!o) {
+        o = buildRaidBoss();
+        o.position.set(r.x, 0, r.z);
+        const lb = label('', 'raid-label');
+        lb.position.y = 4.8;
+        o.add(lb);
+        o.userData.lb = lb;
+        o.userData.last = '';
+        this.scene.add(o);
+        this.raidObjs.set(r.id, o);
+      }
+      const u = o.userData;
+      const fight = r.phase === 'fight';
+      u.body.position.y = 2 + Math.sin(t * 2) * 0.25;
+      u.body.rotation.y += dt * (fight ? 3 : 0.4);
+      u.body.position.x = fight ? Math.sin(t * 25) * 0.15 : 0;
+      u.aura.scale.setScalar(1 + Math.sin(t * (fight ? 10 : 3)) * 0.12);
+      u.aura.material.opacity = fight ? 0.5 + Math.sin(t * 12) * 0.3 : 0.55;
+      const n = sim.raidFighters(r).length;
+      const left = Math.max(0, Math.ceil(r.until - sim.t));
+      const html = `<b>🐉 レイドボス「${escapeHtml(r.name)}」</b><span>戦闘力 ${r.power} ・ 集まった戦力 ${Math.round(sim.raidPower(r))}（${n}組）</span>`
+        + `<i>${fight ? '⚔️ 激闘中！' : `集合中… あと${left}分で開戦`}</i>`;
+      if (html !== u.last) { u.lb.inner.innerHTML = html; u.last = html; }
+    }
+    for (const id of [...this.raidObjs.keys()]) if (!raids.has(id)) this.removeObj(this.raidObjs, id);
 
     // 移動エフェクト (光の柱)
     for (const e of sim.effects) {
