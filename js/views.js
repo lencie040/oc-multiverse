@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=15';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=15';
-import { CATS } from './sim.js?v=15';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=17';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=17';
+import { CATS } from './sim.js?v=17';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -342,10 +342,10 @@ export class ClusterView extends BaseView {
       const atm = new THREE.Mesh(new THREE.SphereGeometry(r * 1.25, 24, 16),
         new THREE.MeshBasicMaterial({ color: w.theme.sky, transparent: true, opacity: 0.18, side: THREE.BackSide }));
       g.add(atm);
-      if (w.num > 0) {
+      if (w.danger > 0) {
         // 魔物の多さ = 赤い輪
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.45, 0.06 + Math.min(0.5, w.num / 80), 6, 40),
-          new THREE.MeshBasicMaterial({ color: '#ff4a6a', transparent: true, opacity: 0.25 + Math.min(0.6, w.num / 50) }));
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.45, 0.06 + w.danger / 80, 6, 40),
+          new THREE.MeshBasicMaterial({ color: '#ff4a6a', transparent: true, opacity: 0.25 + Math.min(0.6, w.danger / 50) }));
         ring.rotation.x = Math.PI / 2.3;
         g.add(ring);
       }

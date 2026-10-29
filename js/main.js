@@ -1,19 +1,19 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=15';
-import { Sim } from './sim.js?v=15';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=15';
-import { UI } from './ui.js?v=15';
-import { Director } from './director.js?v=15';
-import { Sound, moodOf } from './audio.js?v=15';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=15';
+import { buildModel } from './model.js?v=17';
+import { Sim } from './sim.js?v=17';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=17';
+import { UI } from './ui.js?v=17';
+import { Director } from './director.js?v=17';
+import { Sound, moodOf } from './audio.js?v=17';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=17';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=15').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=17').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     try {

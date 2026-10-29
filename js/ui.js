@@ -1,7 +1,7 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=15';
-import { prioOf } from './director.js?v=15';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=15';
+import { CATS } from './sim.js?v=17';
+import { prioOf } from './director.js?v=17';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=17';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -362,7 +362,7 @@ export class UI {
     const boss = mons.filter((m) => m.boss).length;
     return `<h2>${escapeHtml(w.name)}</h2><div class="sub">${escapeHtml(w.yomi)}${w.sub ? ` ・ ${escapeHtml(w.sub)}` : ''}</div>`
       + `<div class="kv"><span>汎異記号</span><span>${escapeHtml(w.id)}</span><span>世界団</span><span>${escapeHtml(w.dan)}</span>`
-      + `<span>魔物の多さ</span><span>${w.num === 0 ? 'なし（平和）' : `Lv.${w.num}`}</span><span>魔物</span><span>${mons.length}体${boss ? `（大魔物 ${boss}）` : ''}</span>`
+      + `<span>魔物の多さ</span><span>${w.num === 0 ? 'なし（平和）' : `Lv.${w.danger}${w.num > w.danger ? '（上限）' : ''}`}</span><span>魔物</span><span>${mons.length}体${boss ? `（大魔物 ${boss}）` : ''}</span>`
       + `<span>住人</span><span>${w.residents.length}人</span><span>今いる</span><span>${present.length}人</span></div>`
       + this.raidBoxes((r) => r.world === w.id)
       + `<h3>隣の世界線</h3><div>${w.neighbors.map((id) => this.wchip(id, true)).join('') || '<span class="sub">なし</span>'}</div>`

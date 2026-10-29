@@ -1,8 +1,9 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=15';
-import { themeOf } from './themes.js?v=15';
+import { seeded, hashStr } from './util.js?v=17';
+import { themeOf } from './themes.js?v=17';
 
 export const LEVEL = 50;
+export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限
 
 // Lv50 時の実数値合計 × ランク補正 = 戦闘力
 export function basePower(c) {
@@ -33,6 +34,7 @@ export function buildModel(raw) {
   for (const d of dans) layoutDan(d, worlds);
   for (const w of worlds.values()) {
     w.theme = themeOf(w);
+    w.danger = Math.min(w.num, MAX_DANGER);
     w.geo = buildGeo(w, worlds);
   }
   return { worlds, chars, charById: new Map(chars.map((c) => [c.id, c])), dans, danById };

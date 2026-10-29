@@ -1,6 +1,6 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=15';
-import { randomWild, randomTown, pathBetween } from './model.js?v=15';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=17';
+import { randomWild, randomTown, pathBetween } from './model.js?v=17';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -158,11 +158,11 @@ export class Sim {
   }
 
   // ---------- 魔物 ----------
-  monsterCap(w) { return w.num === 0 ? 0 : Math.min(40, 2 + Math.round(w.num * 0.8)); }
+  monsterCap(w) { return w.danger === 0 ? 0 : 2 + Math.round(w.danger * 0.8); }
   spawnMonster(w) {
     const p = randomWild(w.geo);
     const boss = chance(0.06);
-    const power = Math.round((240 + w.num * 30) * rand(0.6, 1.4) * (boss ? 2.2 : 1));
+    const power = Math.round((240 + w.danger * 30) * rand(0.6, 1.4) * (boss ? 2.2 : 1));
     this.monsters.get(w.id).push({ id: this.nextMonsterId++, x: p.x, z: p.z, tx: p.x, tz: p.z, power, boss, engagedBy: null });
   }
   updateMonsters(dt) {
@@ -171,7 +171,7 @@ export class Sim {
       const cap = this.monsterCap(w);
       if (list.length < cap) {
         const acc = this.spawnAcc.get(w.id) + dt;
-        const every = 240 / (1 + w.num * 0.12);
+        const every = 240 / (1 + w.danger * 0.12);
         if (acc >= every) { this.spawnMonster(w); this.spawnAcc.set(w.id, 0); } else this.spawnAcc.set(w.id, acc);
       }
       for (const mo of list) {
@@ -354,7 +354,7 @@ export class Sim {
     const choice = weighted([
       ['hobby', 22],
       ['work', workOk ? 30 : 0],
-      ['battle', monsters ? 6 + Math.min(30, monsters * 2) : 0],
+      ['battle', monsters ? 6 + Math.min(14, monsters) : 0],
       ['move', 8],
       ['sabori', atHome ? 14 : 0],
       ['water', 5],
@@ -436,7 +436,7 @@ export class Sim {
     if (h >= 8 && h < 17 && this.raids.length < 3) {
       for (const w of this.m.worlds.values()) {
         if (w.num < 20 || this.raids.some((r) => r.world === w.id)) continue;
-        if (chance(dt * RAID_RATE * (1 + w.num / 60))) this.spawnRaid(w);
+        if (chance(dt * RAID_RATE * (1 + w.danger / 60))) this.spawnRaid(w);
       }
     }
     for (const r of [...this.raids]) {
@@ -461,7 +461,7 @@ export class Sim {
       id: this.nextRaidId++, world: w.id, x: Math.cos(a) * rr, z: Math.sin(a) * rr,
       name: `${[...w.name][0]}獄の${pick(RAID_TITLE)}`,
       // 一人では勝てないが、5人前後集まれば勝ち目がある強さ
-      power: Math.round((240 + Math.min(w.num, 40) * 30) * 4.5 * rand(0.9, 1.2)),
+      power: Math.round((240 + w.danger * 30) * 4.5 * rand(0.9, 1.2)),
       phase: 'gather', until: this.t + 90, participants: [], helpers: [],
     };
     this.raids.push(r);
@@ -601,7 +601,8 @@ export class Sim {
     if (!list.length) return false;
     const pw = this.partyPower(c);
     list.sort((a, b) => dist2(c.x, c.z, a.x, a.z) - dist2(c.x, c.z, b.x, b.z));
-    const mo = list.find((m) => m.power < pw * 1.6 || chance(0.15));
+    // 勝てそうな相手を選ぶ。どうしてもいなければ、たまに格上へ挑む
+    const mo = list.find((m) => m.power < pw) || (chance(0.1) ? list[0] : null);
     if (!mo) return false;
     mo.engagedBy = c.id;
     this.setAct(c, 'battle', '魔物退治', 0, { x: mo.x + 1.2, z: mo.z }, 'battle', mo.id, mo.boss ? '大魔物に向かっている' : '魔物退治に向かっている');
@@ -949,7 +950,13 @@ export class Sim {
     const map = new Map(s.chars);
     if (map.size !== this.m.chars.length || this.m.chars.some((c) => !map.has(c.id) || !(this.m.worlds.has(map.get(c.id).world) || map.get(c.id).world === TRANSIT))) return false;
     this.t = s.t; this.lastMorning = s.lastMorning; this.nextMonsterId = s.nextMonsterId;
-    for (const [wid, list] of Object.entries(s.monsters)) if (this.monsters.has(wid)) this.monsters.set(wid, list);
+    for (const [wid, list] of Object.entries(s.monsters)) {
+      const w = this.m.worlds.get(wid);
+      if (!w) continue;
+      // 上限を変える前に生まれた強すぎる魔物は取り除く
+      const maxPower = (240 + w.danger * 30) * 1.4 * 2.2;
+      this.monsters.set(wid, list.filter((mo) => mo.power <= maxPower).slice(0, this.monsterCap(w)));
+    }
     this.events = s.events || [];
     this.raids = (s.raids || []).filter((r) => this.m.worlds.has(r.world));
     this.nextRaidId = s.nextRaidId || 1;
