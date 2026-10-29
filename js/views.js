@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=7';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=7';
-import { CATS } from './sim.js?v=7';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=9';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=9';
+import { CATS } from './sim.js?v=9';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -593,6 +593,7 @@ export class WorldView extends BaseView {
     }
 
     this.charObjs = new Map();
+    this.floats = [];
     this.monObjs = new Map();
     this.raidObjs = new Map();
     this.tents = new Map();
@@ -645,7 +646,7 @@ export class WorldView extends BaseView {
     g.add(bl);
     sp.userData.charId = c.id;
     g.userData = {
-      pick: true, sp, nl, bl, tex, last: '', bubLast: '', phase: Math.random() * 10,
+      pick: true, sp, nl, bl, tex, last: '', bubLast: '', phase: Math.random() * 10, emoteN: c.emote?.n, hitT: Math.random(),
       onClick: () => this.app.selectChar(c.id),
       onHover: (on) => nameEl.classList.toggle('hot', on),
     };
@@ -740,6 +741,16 @@ export class WorldView extends BaseView {
         u.bl.position.y = H + 2.2;
         if (u.bubLast !== c.bubble.text) { u.bl.element.textContent = c.bubble.text; u.bubLast = c.bubble.text; }
       } else u.bl.visible = false;
+      // リアクションの絵文字・戦闘のダメージ表示
+      if (c.emote && c.emote.n !== u.emoteN) {
+        u.emoteN = c.emote.n;
+        if (camD < 140) this.floatText(o, c.emote.e, H + 1.4, 'emote');
+      }
+      const raidFight = c.act.kind === 'raid' && !c.walking && sim.raids.some((r) => r.id === c.act.data && r.phase === 'fight');
+      if ((c.act.kind === 'fight' || raidFight) && camD < 140 && (u.hitT -= dt) < 0) {
+        u.hitT = 0.45 + Math.random() * 0.5;
+        this.floatText(o, `💥${Math.round(30 + Math.random() * (raidFight ? 900 : 300))}`, H * 0.8, 'hit');
+      }
       // テント
       if (c.state === 'camp' && !c.partyLeader) {
         if (!this.tents.has(c.id)) {
@@ -752,6 +763,14 @@ export class WorldView extends BaseView {
     }
     for (const id of [...this.charObjs.keys()]) if (!here.has(id)) this.removeObj(this.charObjs, id);
     for (const id of [...this.tents.keys()]) if (!here.has(id)) { this.scene.remove(this.tents.get(id)); this.tents.delete(id); }
+
+    this.floats = this.floats.filter((f) => {
+      f.life -= dt;
+      if (f.life > 0) return true;
+      if (f.lb.element.parentNode) f.lb.element.parentNode.removeChild(f.lb.element);
+      f.parent.remove(f.lb);
+      return false;
+    });
 
     // 選択リング
     const so = sel && this.charObjs.get(sel.id);
@@ -809,6 +828,10 @@ export class WorldView extends BaseView {
       u.body.position.x = fight ? Math.sin(t * 25) * 0.15 : 0;
       u.aura.scale.setScalar(1 + Math.sin(t * (fight ? 10 : 3)) * 0.12);
       u.aura.material.opacity = fight ? 0.5 + Math.sin(t * 12) * 0.3 : 0.55;
+      if (fight && (u.hitT = (u.hitT ?? 0) - dt) < 0) {
+        u.hitT = 0.18 + Math.random() * 0.2;
+        this.floatText(o, `-${Math.round(200 + Math.random() * 1800)}`, 2.6 + Math.random() * 1.5, 'boss');
+      }
       const n = sim.raidFighters(r).length;
       const left = Math.max(0, Math.ceil(r.until - sim.t));
       const html = `<b>🐉 レイドボス「${escapeHtml(r.name)}」</b><span>戦闘力 ${r.power} ・ 集まった戦力 ${Math.round(sim.raidPower(r))}（${n}組）</span>`
@@ -836,6 +859,14 @@ export class WorldView extends BaseView {
       if (f.life <= 0) { this.scene.remove(f.m); f.m.geometry.dispose(); f.m.material.dispose(); return false; }
       return true;
     });
+  }
+
+  floatText(parent, text, y, cls) {
+    if (this.floats.length > 120) return;
+    const lb = label(escapeHtml(text), `float-${cls}`);
+    lb.position.set((Math.random() - 0.5) * 1.6, y, (Math.random() - 0.5) * 0.6);
+    parent.add(lb);
+    this.floats.push({ lb, parent, life: cls === 'hit' ? 1.1 : 1.8 });
   }
 
   updateParticles(dt, t) {

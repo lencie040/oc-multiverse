@@ -1,6 +1,7 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=7';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=7';
+import { CATS } from './sim.js?v=9';
+import { prioOf } from './director.js?v=9';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=9';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -23,6 +24,11 @@ export class UI {
       app.view.refresh?.();
     });
     $('#tg-panels').addEventListener('click', () => document.body.classList.toggle('nopanels'));
+    $('#tg-director').addEventListener('click', () => app.director.toggle());
+    $('#tg-news').addEventListener('click', () => this.showNews(true));
+    $('#tg-toast').addEventListener('change', (e) => { app.settings.toasts = e.target.checked; });
+    $('#news').addEventListener('click', (e) => { if (e.target.id === 'news' || e.target.closest('.x')) $('#news').hidden = true; });
+    this.shownReport = app.sim.report?.id ?? 0;
     $('#tg-minor').addEventListener('change', (e) => { app.settings.minor = e.target.checked; this.renderEvents(); });
     document.querySelector('#events .tabs').addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -107,6 +113,8 @@ export class UI {
     const h = sim.hour;
     $('#clk-icon').textContent = h >= 22 || h < 5 ? '🌙' : h < 7 ? '🌅' : h < 17.5 ? '☀️' : h < 20 ? '🌇' : '🌙';
     $('#clk-text').textContent = tm.text;
+    const rep = this.app.sim.report;
+    if (rep && rep.id !== this.shownReport && this.app.settings.news) this.showNews();
     if ((this.infoT -= dt) <= 0) { this.renderInfo(); this.infoT = 0.5; }
   }
 
@@ -127,11 +135,67 @@ export class UI {
     $('#evlist').innerHTML = list.length ? list.map((e) => this.evHtml(e)).join('') : '<div class="ev minor-ev">まだ何も起きていません…</div>';
   }
   onEvent(e) {
+    if (this.app.settings.toasts && prioOf(e) >= 60) this.toast(e);
     if (!this.evMatch(e)) return;
     const box = $('#evlist');
     if (box.firstElementChild && !box.firstElementChild.dataset.w) box.innerHTML = '';
     box.insertAdjacentHTML('afterbegin', this.evHtml(e));
     while (box.children.length > 150) box.lastElementChild.remove();
+  }
+
+  // ---------- 実況テロップ ----------
+  toast(e) {
+    const box = $('#toasts');
+    const el = document.createElement('div');
+    el.className = 'toast' + (prioOf(e) >= 88 ? ' big' : '');
+    el.innerHTML = `${this.wchip(e.world)}${escapeHtml(e.text)}`;
+    el.addEventListener('click', () => {
+      if (e.ids[0]) this.app.selectChar(e.ids[0], { focus: true });
+      else this.app.openWorld(e.world);
+    });
+    box.appendChild(el);
+    while (box.children.length > 3) box.firstElementChild.remove();
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 6500);
+  }
+  caption(text) {
+    const el = $('#caption');
+    el.hidden = !text;
+    if (text) el.textContent = text;
+  }
+
+  // ---------- 日報 ----------
+  showNews(force = false) {
+    const r = this.app.sim.report;
+    const box = $('#news');
+    if (!r) {
+      if (force) { box.innerHTML = `<div class="paper"><button class="x">×</button><div class="mast"><h1>多元日報</h1></div><p>まだ日報はありません。朝6時に前の日の出来事がまとまります。</p></div>`; box.hidden = false; }
+      return;
+    }
+    this.shownReport = r.id;
+    const { model } = this.app;
+    const wn = (id) => model.worlds.get(id)?.name ?? id;
+    const rare = r.treasures.filter((x) => x.rare);
+    const head = r.raidsWon.length ? `号外！ レイドボス「${r.raidsWon[0].name}」を${r.raidsWon[0].n}人で撃破！`
+      : rare.length ? `大発見！ ${rare[0].name}が「${rare[0].item}」を発見`
+      : r.raidsLost.length ? `レイドボス「${r.raidsLost[0].name}」の猛威…${r.raidsLost[0].n}人が倒れる`
+      : r.bestFriends.length ? `${r.bestFriends[0][0]}と${r.bestFriends[0][1]}が親友に`
+      : r.danJumps.length ? `${r.danJumps[0].name}、世界団を越える`
+      : r.mvp.length ? `魔物退治のMVPは${r.mvp[0].name}（${r.mvp[0].n}体）` : '今日も多元宇宙は平和でした';
+    const li = (arr, f) => arr.length ? `<ul>${arr.map((x) => `<li>${f(x)}</li>`).join('')}</ul>` : '<ul><li>なし</li></ul>';
+    box.innerHTML = `<div class="paper"><button class="x" title="閉じる">×</button>`
+      + `<div class="mast"><h1>多元日報</h1><small>${r.day + 1}日目の出来事（朝6時〜翌朝6時）</small></div>`
+      + `<div class="head">${escapeHtml(head)}</div>`
+      + `<div class="nums"><div><b>${r.battles}</b><span>魔物退治</span></div><div><b>${r.downs}</b><span>気絶</span></div><div><b>${r.travels}</b><span>世界線移動</span></div><div><b>${r.camps}</b><span>野宿</span></div><div><b>${r.duels}</b><span>撃退騒ぎ</span></div></div>`
+      + `<h4>⚔️ 魔物退治MVP</h4>${li(r.mvp, (m, i) => `${escapeHtml(m.name)} … ${m.n}体`)}`
+      + `<h4>🐉 レイド</h4>${li([...r.raidsWon.map((x) => ({ ...x, win: true })), ...r.raidsLost], (x) => `${escapeHtml(wn(x.world))}の「${escapeHtml(x.name)}」… ${x.win ? `${x.n}人で撃破🏆` : `${x.n}人が敗北💥`}`)}`
+      + `<h4>💕 新しい親友</h4>${li(r.bestFriends, ([a, b]) => `${escapeHtml(a)} と ${escapeHtml(b)}`)}`
+      + `<h4>💎 見つかった宝物</h4>${li([...rare, ...r.treasures.filter((x) => !x.rare)].slice(0, 8), (x) => `${x.rare ? '💎' : '✨'} ${escapeHtml(x.name)}「${escapeHtml(x.item)}」`)}`
+      + `<h4>🌌 世界団を越えたキャラ</h4>${li(r.danJumps, (x) => `${escapeHtml(x.name)}（${escapeHtml(wn(x.from))} → ${escapeHtml(wn(x.to))}）`)}`
+      + `</div>`;
+    box.hidden = false;
+    // おまかせ観戦中は少し読んだら自動で閉じる
+    clearTimeout(this.newsTimer);
+    if (this.app.director.on && !force) this.newsTimer = setTimeout(() => { box.hidden = true; }, 15000);
   }
 
   // ---------- 検索 ----------
@@ -227,6 +291,19 @@ export class UI {
     }
   }
 
+  rankings() {
+    const { model, sim } = this.app;
+    const boards = [
+      ['⚔️ 魔物退治', (c) => c.kills, '体'], ['🧳 世界線移動', (c) => c.travels, '回'], ['💎 宝物', (c) => c.treasures, '個'],
+      ['🐉 レイド勝利', (c) => c.raidWins, '回'], ['💕 友達の数', (c) => sim.friendCount(c), '人'],
+    ];
+    const medal = ['🥇', '🥈', '🥉'];
+    return `<h3>🏆 ランキング</h3><div class="rank-grid">${boards.map(([title, f, unit]) => {
+      const top = model.chars.map((c) => [c, f(c)]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      return `<div class="rk"><b>${title}</b>${top.map(([c, v], i) => `<div class="row" data-c="${escapeHtml(c.id)}"><span class="medal">${medal[i]}</span>${escapeHtml(c.name)}<small>${v}${unit}</small></div>`).join('') || '<div class="sub">まだいません</div>'}</div>`;
+    }).join('')}</div>`;
+  }
+
   universeInfo() {
     const { model, sim } = this.app;
     return `<h2>🌌 宇宙</h2><div class="sub">世界団をクリックすると中の世界線が見られます</div>`
@@ -237,6 +314,7 @@ export class UI {
         const n = model.chars.filter((c) => model.worlds.get(c.world)?.dan === d.id).length;
         return `<div class="row" data-dan="${escapeHtml(d.id)}"><i class="ico" style="background:${d.color}"></i>${escapeHtml(d.id)}（${escapeHtml(d.yomi)}）<small>世界線 ${d.worlds.length} ・ 滞在 ${n}人</small></div>`;
       }).join('')}</div>`
+      + this.rankings()
       + `<h3>旅をしているキャラ</h3><div class="list">${model.chars.filter((c) => c.trip && !c.partyLeader).map((c) => this.charRow(c, this.whereChip(c))).join('') || '<div class="sub">今はいません</div>'}</div>`
       + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。ランク9以上は1日3回まで隣の世界線へ移動でき、ランク10以上は余裕のあるランク分だけ同じ汎異記号の仲間を連れていけます。ランク11以上は3日に1回だけ世界団を越えられます（その日は力が半減）。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。</div>`;
   }
@@ -274,6 +352,18 @@ export class UI {
       + (away.length ? `<h3>お出かけ中の住人（${away.length}）</h3><div class="list">${away.map((c) => this.charRow(c, this.whereChip(c))).join('')}</div>` : '');
   }
 
+  friendList(c) {
+    const { model, sim } = this.app;
+    const rel = Object.entries(c.friends).filter(([, v]) => v >= 5 || v <= -10).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    if (!rel.length) return '';
+    return `<h3>💕 なかま関係</h3><div class="list">${rel.map(([id, v]) => {
+      const o = model.charById.get(id);
+      const lbl = sim.relationLabel(v);
+      const icon = v >= 25 ? '💕' : v >= 10 ? '🤝' : v <= -10 ? '⚡' : '🙂';
+      return `<div class="row" data-c="${escapeHtml(id)}"><span class="medal">${icon}</span>${escapeHtml(o.name)}<small>${lbl}（${v}）</small></div>`;
+    }).join('')}</div>`;
+  }
+
   charInfo(c) {
     const { model, sim, following } = this.app;
     const d = sim.displayAct(c);
@@ -305,6 +395,7 @@ export class UI {
       + (c.seiryoku ? `<span>勢力</span><span>${escapeHtml(c.seiryoku)}</span>` : '')
       + `<span>仕事</span><span>${escapeHtml(c.job)}</span><span>趣味</span><span>${c.hobbies.map(escapeHtml).join('、')}</span>`
       + `<span>記録</span><span>魔物退治 ${c.kills} ・ レイド勝利 ${c.raidWins} ・ 気絶 ${c.downs} ・ 移動 ${c.travels} ・ 発見した宝物 ${c.treasures}</span></div>`
+      + this.friendList(c)
       + `<h3>種族値</h3><div class="bars">${c.stats.map((v, i) => `<span>${STAT_NAMES[i]}</span><span class="b"><i style="width:${Math.min(100, (v / maxStat) * 100)}%"></i></span><span>${v}</span>`).join('')}</div>`
       + `<h3>最近の出来事</h3><div class="mlog">${c.log.slice().reverse().map((e) => { const t = fmtTime(e.t); return `<div>${t.day}日目 ${t.hh}:${t.mm} ${escapeHtml(e.text)}</div>`; }).join('') || 'まだありません'}</div>`;
   }

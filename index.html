@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=9">
   <script type="importmap">
     {
       "imports": {
@@ -23,6 +23,8 @@
   <header id="top">
     <nav id="crumbs"></nav>
     <div id="clock"><span id="clk-icon">☀️</span><b id="clk-text">--</b></div>
+    <button id="tg-director" class="topbtn" title="おまかせ観戦 (O)">🎬 おまかせ観戦</button>
+    <button id="tg-news" class="topbtn" title="日報を見る">📰 日報</button>
     <div id="speed" title="時間の速さ (P で一時停止)">
       <button data-s="0">⏸</button><button data-s="1" class="on">×1</button><button data-s="5">×5</button><button data-s="30">×30</button><button data-s="120">×120</button>
     </div>
@@ -33,11 +35,15 @@
     <div id="toggles">
       <label><input type="checkbox" id="tg-names" checked> キャラ名</label>
       <label><input type="checkbox" id="tg-wnames" checked> 世界線名</label>
+      <label><input type="checkbox" id="tg-toast" checked> テロップ</label>
       <button id="tg-panels" title="パネルの表示切替 (H)">▤ パネル</button>
     </div>
   </header>
 
   <div id="wtitle" hidden></div>
+  <div id="toasts"></div>
+  <div id="caption" hidden></div>
+  <div id="news" hidden></div>
 
   <aside id="events" class="panel">
     <div class="ph">
@@ -58,12 +64,13 @@
     <span><kbd>T</kbd> 追跡</span>
     <span><kbd>H</kbd> パネル</span>
     <span><kbd>P</kbd> 一時停止</span>
+    <span><kbd>O</kbd> おまかせ</span>
     <span><kbd>Esc</kbd> 戻る</span>
     <span id="legend"></span>
   </footer>
 
   <div id="loading">宇宙を準備しています…</div>
 
-  <script type="module" src="js/main.js?v=7"></script>
+  <script type="module" src="js/main.js?v=9"></script>
 </body>
 </html>

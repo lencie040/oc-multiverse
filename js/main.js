@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=7';
-import { Sim } from './sim.js?v=7';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=7';
-import { UI } from './ui.js?v=7';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=7';
+import { buildModel } from './model.js?v=9';
+import { Sim } from './sim.js?v=9';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=9';
+import { UI } from './ui.js?v=9';
+import { Director } from './director.js?v=9';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=9';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
@@ -19,7 +20,7 @@ class App {
       if (s && !this.sim.restore(s)) console.info('保存データが古いため新しく始めます');
     } catch (e) { /* 保存データなし */ }
 
-    this.settings = { names: true, worldNames: true, minor: false };
+    this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true };
     this.speed = 1;
     this.keys = {};
     this.selected = null;
@@ -36,6 +37,7 @@ class App {
     document.body.appendChild(this.labels.domElement);
 
     this.ui = new UI(this);
+    this.director = new Director(this);
     this.bindInput();
     this.route();
     addEventListener('hashchange', () => this.route(true));
@@ -145,10 +147,12 @@ class App {
     addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
       this.keys[e.code] = true;
+      if (this.director.on && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Escape'].includes(e.code)) this.director.toggle(false);
       if (e.code === 'Escape') { if (this.selected) this.selectChar(null); else this.goUp(); }
       else if (e.code === 'Slash') { e.preventDefault(); document.getElementById('search').focus(); }
       else if (e.code === 'KeyP') this.setSpeed(this.speed === 0 ? 1 : 0);
       else if (e.code === 'KeyT') this.toggleFollow();
+      else if (e.code === 'KeyO') this.director.toggle();
       else if (e.code === 'KeyH') document.body.classList.toggle('nopanels');
       else if (e.code === 'KeyN') { const cb = document.getElementById('tg-names'); cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
     });
@@ -163,6 +167,7 @@ class App {
     if (this.speed) this.sim.update((dt / REAL_SEC_PER_GAME_MIN) * this.speed);
     this.view.update(dt);
     this.ui.tick(dt);
+    this.director.tick();
     this.renderer.render(this.view.scene, this.view.camera);
     this.labels.render(this.view.scene, this.view.camera);
   }
