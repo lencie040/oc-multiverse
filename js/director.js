@@ -1,5 +1,5 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=11';
+import { weighted } from './util.js?v=12';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
@@ -13,12 +13,30 @@ export function prioOf(e) {
 
 const now = () => performance.now() / 1000;
 
+// 場面ごとのカメラ: dist=距離, elev=見下ろす角度(ラジアン), orbit=回り込む速さ
+const SHOTS = {
+  universe: { dist: 75, elev: 0.35, orbit: 0.06 },
+  transit: { dist: 38, elev: 0.4, orbit: 0.09 },
+  closeup: { dist: 16, elev: 0.38, orbit: 0.07 },
+  chat: { dist: 12, elev: 0.25, orbit: 0.05 },
+  sleep: { dist: 13, elev: 0.75, orbit: 0.04 },
+  walk: { dist: 22, elev: 0.55, orbit: 0.06 },
+  fight: { dist: 19, elev: 0.42, orbit: 0.16 },
+  raidMember: { dist: 30, elev: 0.5, orbit: 0.1 },
+  raidGather: { dist: 62, elev: 0.82, orbit: 0.07 },
+  raidFight: { dist: 44, elev: 0.5, orbit: 0.2 },
+  establish: { dist: 0, elev: 0.95, orbit: 0.05 },
+};
+
 export class Director {
   constructor(app) {
     this.app = app;
     this.on = false;
     this.until = 0;
     this.prio = 0;
+    this.shot = null;
+    this.raidId = null;
+    this.vary = { k: 1, dir: 1 };
     app.sim.listen((e) => this.onEvent(e));
   }
 
@@ -39,9 +57,16 @@ export class Director {
     this.show(e, p);
   }
 
+  // 場面が変わるたびに、距離と回る向きに少し変化をつける
+  newTake(raidId = null) {
+    this.raidId = raidId;
+    this.vary = { k: 0.85 + Math.random() * 0.35, dir: Math.random() < 0.5 ? -1 : 1 };
+  }
+
   show(e, p) {
     const { app } = this;
     const raid = app.sim.raidAt(e.world);
+    this.newTake(e.ids.length ? null : raid?.id);
     if (e.ids.length) {
       app.following = true;
       app.selectChar(e.ids[0], { focus: true });
@@ -67,6 +92,7 @@ export class Director {
       app.selectChar(null);
       app.openWorld(raid.world);
       app.view.focusOn(raid.x, raid.z, ids.length ? 55 : 70);
+      this.newTake(raid.id);
       this.prio = 90;
       this.until = now() + 15;
       app.ui.caption(`🎬 レイド${raid.phase === 'fight' ? '激闘中' : '集合中'}！「${raid.name}」＠${sim.wname(raid.world)}`);
@@ -87,6 +113,7 @@ export class Director {
     }
     const c = weighted(cands);
     if (!c) return;
+    this.newTake();
     app.following = true;
     app.selectChar(c.id, { focus: true });
     this.prio = 0;
@@ -95,6 +122,31 @@ export class Director {
   }
 
   tick() {
-    if (this.on && now() > this.until) this.pickIdle();
+    if (!this.on) return;
+    if (now() > this.until) this.pickIdle();
+    this.shot = this.chooseShot();
+  }
+
+  // 今映しているものに合わせてカメラの構図を決める
+  chooseShot() {
+    const { app } = this;
+    const v = app.view;
+    let base;
+    if (v.kind === 'universe') base = SHOTS.universe;
+    else if (v.kind === 'dan') base = SHOTS.transit;
+    else if (this.raidId != null && !app.selected) {
+      const r = app.sim.raids.find((x) => x.id === this.raidId);
+      base = !r ? { ...SHOTS.establish, dist: v.bound * 1.2 } : r.phase === 'fight' ? SHOTS.raidFight : SHOTS.raidGather;
+    } else {
+      const c = app.selected && app.model.charById.get(app.selected);
+      if (!c) base = { ...SHOTS.establish, dist: v.bound * 1.2 };
+      else if (c.state === 'sleep' || c.state === 'camp' || c.state === 'down') base = SHOTS.sleep;
+      else if (c.act.kind === 'fight') base = SHOTS.fight;
+      else if (c.act.kind === 'raid') base = SHOTS.raidMember;
+      else if (c.act.kind === 'chat' || c.act.cat === 'social') base = SHOTS.chat;
+      else if (c.walking) base = SHOTS.walk;
+      else base = SHOTS.closeup;
+    }
+    return { dist: base.dist * this.vary.k, elev: base.elev, orbit: base.orbit * this.vary.dir };
   }
 }

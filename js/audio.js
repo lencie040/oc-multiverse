@@ -1,5 +1,5 @@
 // BGM と効果音。音声ファイルは使わず Web Audio API でその場で作曲・合成する
-import { hashStr, seeded } from './util.js?v=11';
+import { hashStr, seeded } from './util.js?v=12';
 
 const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 const MINOR = [0, 2, 3, 5, 7, 8, 10];
@@ -61,6 +61,15 @@ export class Sound {
     const start = () => { this.init(); removeEventListener('pointerdown', start); removeEventListener('keydown', start); };
     addEventListener('pointerdown', start);
     addEventListener('keydown', start);
+    // タブが隠れている・最小化されている間は音を止める
+    document.addEventListener('visibilitychange', () => this.syncVisibility());
+    addEventListener('pagehide', () => this.ctx?.suspend());
+  }
+
+  syncVisibility() {
+    if (!this.ctx) return;
+    if (document.hidden) this.ctx.suspend();
+    else this.ctx.resume();
   }
 
   init() {
@@ -95,6 +104,7 @@ export class Sound {
     this.step = 0;
     this.nextTime = ctx.currentTime + 0.1;
     this.timer = setInterval(() => this.schedule(), 25);
+    if (document.hidden) ctx.suspend();
     if (this.pendingMood) this.setMood(...this.pendingMood);
   }
 

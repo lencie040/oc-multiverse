@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=11';
-import { Sim } from './sim.js?v=11';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=11';
-import { UI } from './ui.js?v=11';
-import { Director } from './director.js?v=11';
-import { Sound, moodOf } from './audio.js?v=11';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=11';
+import { buildModel } from './model.js?v=12';
+import { Sim } from './sim.js?v=12';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=12';
+import { UI } from './ui.js?v=12';
+import { Director } from './director.js?v=12';
+import { Sound, moodOf } from './audio.js?v=12';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=12';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 

@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=11';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=11';
-import { CATS } from './sim.js?v=11';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=12';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=12';
+import { CATS } from './sim.js?v=12';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -64,6 +64,9 @@ class BaseView {
     this.raycaster = new THREE.Raycaster();
     this.hovered = null;
     this.bound = 300;
+    // おまかせ観戦中に手で動かしたら、しばらくは自動カメラを止める
+    this.userHold = 0;
+    this.controls.addEventListener('start', () => { this.userHold = 6; });
   }
   resize() {
     this.camera.aspect = innerWidth / innerHeight;
@@ -107,7 +110,21 @@ class BaseView {
   }
   update(dt) {
     this.keyMove(dt);
+    this.cinematic(dt);
     this.controls.update();
+  }
+  // おまかせ観戦のカメラワーク: 距離・角度をなめらかに合わせ、ゆっくり回り込む
+  cinematic(dt) {
+    const shot = this.app.director?.on && this.app.director.shot;
+    if (!shot) return;
+    if (this.userHold > 0) { this.userHold -= dt; return; }
+    const tgt = this.controls.target;
+    const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(tgt));
+    const k = 1 - Math.exp(-dt * 1.1);
+    sph.theta += shot.orbit * dt;
+    sph.phi += (clamp(Math.PI / 2 - shot.elev, 0.15, this.controls.maxPolarAngle) - sph.phi) * k;
+    sph.radius += (clamp(shot.dist, this.controls.minDistance, this.controls.maxDistance) - sph.radius) * k;
+    this.camera.position.copy(tgt).add(new THREE.Vector3().setFromSpherical(sph));
   }
   hover(ndc) {
     const o = this.pick(ndc);
@@ -274,7 +291,7 @@ export class UniverseView extends BaseView {
       a.addScaledVector(dir, A.r); b.addScaledVector(dir, -B.r);
       return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * 30, 0));
     }, 6);
-    if (this.app.following) this.controls.autoRotate = false;
+    if (this.app.following || this.app.director.on) this.controls.autoRotate = false;
     if (this.followTraveler(dt)) return;
     super.update(dt);
     for (const s of this.spheres) s.userData.inner.rotation.y += dt * 0.15;
