@@ -6,11 +6,15 @@ import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMon
 import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js';
 import { CATS } from './sim.js';
 
+// 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
   const el = document.createElement('div');
-  el.className = cls;
-  el.innerHTML = html;
+  const inner = document.createElement('div');
+  inner.className = cls;
+  inner.innerHTML = html;
+  el.appendChild(inner);
   const o = new CSS2DObject(el);
+  o.inner = inner;
   return o;
 }
 
@@ -171,7 +175,7 @@ export class UniverseView extends BaseView {
       g.add(lb);
       g.userData = {
         pick: true, inner, core,
-        onHover: (on) => { core.material.emissiveIntensity = on ? 0.6 : 0.25; lb.element.classList.toggle('hot', on); },
+        onHover: (on) => { core.material.emissiveIntensity = on ? 0.6 : 0.25; lb.inner.classList.toggle('hot', on); },
         onClick: () => app.openDan(d.id),
       };
       this.scene.add(g);
@@ -233,7 +237,7 @@ export class ClusterView extends BaseView {
       g.add(lb);
       g.userData = {
         pick: true,
-        onHover: (on) => { sph.material.emissiveIntensity = on ? 0.8 : 0.35; lb.element.classList.toggle('hot', on); },
+        onHover: (on) => { sph.material.emissiveIntensity = on ? 0.8 : 0.35; lb.inner.classList.toggle('hot', on); },
         onClick: () => app.openWorld(wid),
       };
       this.scene.add(g);
@@ -291,7 +295,7 @@ export class ClusterView extends BaseView {
       const mons = sim.monsters.get(wid).length;
       const html = (show ? `<b>${escapeHtml(n.w.name)}</b><small>${escapeHtml(wid)}</small>` : '')
         + `<span>👤${present.length}${visitors ? ` 🧳${visitors}` : ''}${mons ? ` 👾${mons}` : ''}</span>`;
-      if (html !== n.last) { n.lb.element.innerHTML = html; n.last = html; }
+      if (html !== n.last) { n.lb.inner.innerHTML = html; n.last = html; }
     }
   }
   update(dt) {
@@ -492,7 +496,7 @@ export class WorldView extends BaseView {
       this.portalLabels.push(lb);
       pg.userData.pick = true;
       pg.userData.onClick = () => app.openWorld(nid);
-      pg.userData.onHover = (on) => lb.element.classList.toggle('hot', on);
+      pg.userData.onHover = (on) => lb.inner.classList.toggle('hot', on);
       this.pickables.push(pg);
       this.animated.push(pg);
       this.scene.add(pg);

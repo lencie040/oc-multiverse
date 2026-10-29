@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { buildModel } from './model.js';
 import { Sim } from './sim.js';
-import { UniverseView, ClusterView, WorldView } from './views.js';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=3';
 import { UI } from './ui.js';
 import { REAL_SEC_PER_GAME_MIN } from './util.js';
 
