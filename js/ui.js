@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=25';
-import { prioOf } from './director.js?v=25';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=25';
-import { typeSummary, TYPE_COLOR } from './types.js?v=25';
+import { CATS } from './sim.js?v=26';
+import { prioOf } from './director.js?v=26';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=26';
+import { typeSummary, TYPE_COLOR } from './types.js?v=26';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -119,6 +119,8 @@ export class UI {
     const h = sim.hour;
     $('#clk-icon').textContent = h >= 22 || h < 5 ? '🌙' : h < 7 ? '🌅' : h < 17.5 ? '☀️' : h < 20 ? '🌇' : '🌙';
     $('#clk-text').textContent = `${sim.dateLabel()} ${tm.hh}:${tm.mm}`;
+    const st = this.app.sync.statusText();
+    if (st !== this.lastSync) { $('#sync-st').textContent = st; this.lastSync = st; }
     const tr = this.app.sound.trackName;
     if (tr !== this.lastTrack) { $('#track').textContent = tr; this.lastTrack = tr; }
     const rep = this.app.sim.report;

@@ -1,27 +1,31 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=25';
-import { Sim } from './sim.js?v=25';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=25';
-import { UI } from './ui.js?v=25';
-import { Director } from './director.js?v=25';
-import { Sound, moodOf } from './audio.js?v=25';
-import { MIN_PER_DAY, nowGameT } from './util.js?v=25';
+import { buildModel } from './model.js?v=26';
+import { Sim } from './sim.js?v=26';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=26';
+import { UI } from './ui.js?v=26';
+import { Director } from './director.js?v=26';
+import { Sound, moodOf } from './audio.js?v=26';
+import { MIN_PER_DAY, nowGameT } from './util.js?v=26';
+import { Sync } from './sync.js?v=26';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=25').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=26').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
-    try {
-      const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-      if (s && !this.sim.restore(s)) console.info('保存データが古いため新しく始めます');
-    } catch (e) { /* 保存データなし */ }
-    // 閉じていた間の出来事を進めて、現実の時刻に追いつく
-    this.sim.catchUp();
+    // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
+    this.sync = new Sync(this);
+    const shared = await this.sync.load();
+    let local = null;
+    try { local = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { /* 保存データなし */ }
+    if (shared && this.sim.restore(shared)) { /* みんなの世界の続き */ }
+    else if (local && !this.sim.restore(local)) console.info('保存データが古いため新しく始めます');
+    // 閉じていた間の出来事を進めて、現実の時刻に追いつく (同期中はホストが進める)
+    if (this.sync.role === 'solo') this.sim.catchUp();
 
     this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true };
     this.sound = new Sound();
@@ -47,6 +51,7 @@ class App {
     addEventListener('hashchange', () => this.route(true));
     document.getElementById('loading').remove();
 
+    this.sync.join();
     setInterval(() => this.save(), 15000);
     addEventListener('beforeunload', () => this.save());
     this.last = performance.now();
@@ -54,6 +59,7 @@ class App {
   }
 
   save() {
+    if (!this.sync.running) return;
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.sim.serialize())); } catch (e) { /* 保存できない環境 */ }
   }
 
@@ -202,12 +208,14 @@ class App {
     this.last = now;
     // 現実の時計に合わせて進める。タブを隠していた間の遅れは、通知 (音・カメラ・テロップ) なしで少しずつ追いつく
     const gap = nowGameT() - this.sim.t;
-    if (gap > 2 * MIN_PER_DAY) this.sim.catchUp();
+    if (!this.sync.running) this.sim.coast(Math.max(0, gap));
+    else if (gap > 2 * MIN_PER_DAY) this.sim.catchUp();
     else if (gap > 1) { this.sim.quiet = true; this.sim.update(Math.min(gap, 30)); this.sim.quiet = false; }
     else if (gap > 0) this.sim.update(gap);
     this.view.update(dt);
     this.ui.tick(dt);
     this.director.tick();
+    this.sync.tick();
     this.updateMusic();
     this.renderer.render(this.view.scene, this.view.camera);
     this.labels.render(this.view.scene, this.view.camera);

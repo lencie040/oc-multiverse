@@ -1,7 +1,7 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=25';
-import { randomWild, randomTown, hopCost, cheapestPath } from './model.js?v=25';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=25';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=26';
+import { randomWild, randomTown, hopCost, cheapestPath } from './model.js?v=26';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=26';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -60,6 +60,9 @@ const EMOTES = {
 };
 const FRIEND = 10, BEST = 25; // 友達・親友になる友好度 // 1ゲーム分あたりの出現率 (昼のみ)
 
+// 保存・同期するキャラの項目 (同期では吹き出しと絵文字も送る)
+const SAVE_KEYS = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins'];
+const SYNC_KEYS = [...SAVE_KEYS, 'bubble', 'emote'];
 const WALK_SPEED = 60; // 1分あたりの移動距離 (現実と同じ時間の流れで、歩く様子が見える速さ)
 const MAX_EVENTS = 500;
 
@@ -1512,7 +1515,7 @@ export class Sim {
 
   // ---------- 保存 ----------
   serialize() {
-    const keys = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins'];
+    const keys = SAVE_KEYS;
     return {
       v: 1, t: this.t, lastMorning: this.lastMorning, nextMonsterId: this.nextMonsterId,
       raids: this.raids, nextRaidId: this.nextRaidId, hordes: this.hordes, races: this.races, repair: this.repair, nextEventId: this.nextEventId,
@@ -1522,6 +1525,64 @@ export class Sim {
       chars: this.m.chars.map((c) => [c.id, Object.fromEntries(keys.map((k) => [k, c[k] === Infinity ? 'INF' : c[k]]))]),
     };
   }
+  // ---------- 同期 (ホストが動かし、ほかの人は届いた状態を映す) ----------
+  charState(c) {
+    const o = {};
+    for (const k of SYNC_KEYS) o[k] = c[k] === Infinity ? 'INF' : c[k];
+    if (o.act && o.act.until === Infinity) o.act = { ...o.act, until: 'INF' };
+    return o;
+  }
+  applyChar(c, d) {
+    Object.assign(c, d);
+    if (c.act && (c.act.until === 'INF' || c.act.until === null)) c.act.until = Infinity;
+  }
+  worldState() {
+    return {
+      lastMorning: this.lastMorning, nextMonsterId: this.nextMonsterId, nextRaidId: this.nextRaidId, nextEventId: this.nextEventId,
+      raids: this.raids, hordes: this.hordes, races: this.races, repair: this.repair, parties: this.parties, meets: this.meets, contests: this.contests,
+      daily: this.daily, report: this.report, effects: this.effects,
+    };
+  }
+  applyWorld(w) { Object.assign(this, w); }
+  // ホストから届いた出来事を、自分で起きたのと同じように記録して知らせる
+  ingest(e) {
+    this.events.push(e);
+    if (this.events.length > MAX_EVENTS) this.events.shift();
+    for (const id of e.ids) {
+      const c = this.m.charById.get(id);
+      if (c) { c.log.push(e); if (c.log.length > 30) c.log.shift(); }
+    }
+    for (const f of this.listeners) f(e);
+  }
+  // 見ているだけの側: 判断はせず、歩いている途中や魔物の移動だけを進めて、次の状態が届くまでの間をつなぐ
+  coast(dt) {
+    this.t += dt;
+    for (const c of this.m.chars) {
+      if (c.bubble && this.t > c.bubble.until) c.bubble = null;
+      if (c.transit || c.state === 'down') continue;
+      if (c.partyLeader) { this.followLeader(c, dt); continue; }
+      if (c.act.kind === 'defend') {
+        const mo = c.act.target != null && this.monsters.get(c.world)?.find((m) => m.id === c.act.target);
+        if (mo && !c.act.fightUntil) this.stepToward(c, mo.x, mo.z, dt * 1.5);
+        continue;
+      }
+      if (!c.walking || !c.dest) continue;
+      const d = Math.sqrt(dist2(c.x, c.z, c.dest.x, c.dest.z));
+      const s = WALK_SPEED * (c.trip ? 1.4 : 1) * dt;
+      if (d <= s) { c.x = c.dest.x; c.z = c.dest.z; c.walking = false; } else { c.x += ((c.dest.x - c.x) / d) * s; c.z += ((c.dest.z - c.z) / d) * s; }
+    }
+    for (const list of this.monsters.values()) {
+      for (const mo of list) {
+        const tx = mo.horde ? 0 : mo.tx, tz = mo.horde ? 0 : mo.tz;
+        const d = Math.sqrt(dist2(mo.x, mo.z, tx, tz));
+        if (d < 0.5 || mo.engagedBy) continue;
+        const s = Math.min(d, (mo.horde ? 20 : 15) * dt);
+        mo.x += ((tx - mo.x) / d) * s; mo.z += ((tz - mo.z) / d) * s;
+      }
+    }
+    this.effects = this.effects.filter((e) => this.t - e.t < 3);
+  }
+
   restore(s) {
     if (!s || s.v !== 1) return false;
     const map = new Map(s.chars);

@@ -227,3 +227,4 @@ body.nopanels #events, body.nopanels #info { display: none; }
 .world-label em.raid.fest { background: #d08a1a; }
 .fest-label em.tm-a { font-style: normal; color: #ff8a7a; }
 .fest-label em.tm-b { font-style: normal; color: #8ab8ff; }
+#sync-st { color: var(--muted); font-size: 12px; margin-left: 4px; }

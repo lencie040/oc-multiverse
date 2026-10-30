@@ -1,5 +1,5 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=25';
+import { weighted } from './util.js?v=26';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
