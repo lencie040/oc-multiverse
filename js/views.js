@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=19';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=19';
-import { CATS } from './sim.js?v=19';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=21';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=21';
+import { CATS } from './sim.js?v=21';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -201,8 +201,7 @@ class BaseView {
     const { app } = this;
     if (!app.following || !app.selected) return;
     const c = app.model.charById.get(app.selected);
-    const tr = app.sim.transitOf(c);
-    if (!tr) { app.goToChar(c, true); return true; }
+    if (!app.isShowing(app.viewFor(c))) { app.goToChar(c, true); return true; }
     const tk = this.tokens?.get(c.transit ? c.id : c.partyLeader);
     if (!tk) return;
     const tgt = this.controls.target;
@@ -217,12 +216,10 @@ class BaseView {
       this.camera.position.copy(p).add(new THREE.Vector3().setFromSpherical(sph));
       return;
     }
-    const k = Math.min(1, dt * 3);
-    const delta = new THREE.Vector3((p.x - tgt.x) * k, (p.y - tgt.y) * k, (p.z - tgt.z) * k);
+    // コマの動き自体がなめらかなので、遅れずぴったり追うほうがブレない
+    const delta = p.clone().sub(tgt);
     tgt.add(delta);
     this.camera.position.add(delta);
-    const off = this.camera.position.clone().sub(tgt);
-    if (off.length() > 90) this.camera.position.copy(tgt).add(off.setLength(off.length() + (90 - off.length()) * k));
   }
 
   dispose() {
@@ -651,6 +648,23 @@ export class WorldView extends BaseView {
     for (const lb of this.portalLabels) lb.visible = this.app.settings.worldNames;
   }
 
+  charPoint(c) {
+    const tr = this.app.sim.transitOf(c);
+    if (tr && (tr.from === this.worldId || tr.to === this.worldId)) {
+      const p = this.flightPos(tr);
+      return { x: p.x, y: p.y + 1.5, z: p.z };
+    }
+    return { x: c.x, y: 0, z: c.z };
+  }
+  // キャラを外側から島の中心に向かって見る構図で映す
+  frameChar(c, dist = 24) {
+    const p = this.charPoint(c);
+    const len = Math.hypot(p.x, p.z);
+    const dx = len > 1 ? p.x / len : 0, dz = len > 1 ? p.z / len : 1;
+    this.controls.target.set(p.x, p.y, p.z);
+    this.camera.position.set(p.x + dx * dist * 0.85, p.y + dist * 0.45, p.z + dz * dist * 0.85);
+  }
+
   focusOn(x, z, dist = 26) {
     const off = this.camera.position.clone().sub(this.controls.target);
     off.setLength(dist);
@@ -704,12 +718,14 @@ export class WorldView extends BaseView {
     // 追跡
     const sel = this.app.selected ? this.app.model.charById.get(this.app.selected) : null;
     if (this.app.following && sel) {
-      if (sel.world !== this.worldId) { this.app.goToChar(sel, true); return; }
+      if (!this.app.isShowing(this.app.viewFor(sel))) { this.app.goToChar(sel, true); return; }
+      // 飛んでいる間はぴったり、歩いている間はなめらかに追う
+      const p = this.charPoint(sel);
+      const k = sim.transitOf(sel) ? 1 : Math.min(1, dt * 4);
       const tgt = this.controls.target;
-      const nx = tgt.x + (sel.x - tgt.x) * Math.min(1, dt * 4), nz = tgt.z + (sel.z - tgt.z) * Math.min(1, dt * 4);
-      this.camera.position.x += nx - tgt.x;
-      this.camera.position.z += nz - tgt.z;
-      tgt.x = nx; tgt.z = nz;
+      const delta = new THREE.Vector3((p.x - tgt.x) * k, (p.y - tgt.y) * k, (p.z - tgt.z) * k);
+      tgt.add(delta);
+      this.camera.position.add(delta);
     }
     super.update(dt);
 
@@ -817,7 +833,7 @@ export class WorldView extends BaseView {
 
     // 選択リング
     const so = sel && this.charObjs.get(sel.id);
-    this.selRing.visible = !!so;
+    this.selRing.visible = !!so && !sim.transitOf(sel);
     if (so) {
       this.selRing.position.set(so.position.x, 0.08, so.position.z);
       this.selRing.scale.setScalar(1 + Math.sin(t * 4) * 0.08);

@@ -213,3 +213,8 @@ body.nopanels #events, body.nopanels #info { display: none; }
 #soundbox label { display: flex; align-items: center; gap: 4px; }
 #soundbox input[type=range] { width: 70px; accent-color: var(--accent); }
 #track { color: var(--accent); min-width: 110px; }
+
+/* 場面切り替えのフェード */
+#fade { position: fixed; inset: 0; z-index: 7; pointer-events: none; background: #05061a; opacity: 0; }
+#fade.on { animation: fadeCut .7s ease-out; }
+@keyframes fadeCut { 0% { opacity: .9; } 100% { opacity: 0; } }

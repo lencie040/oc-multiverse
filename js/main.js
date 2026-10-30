@@ -1,19 +1,19 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=19';
-import { Sim } from './sim.js?v=19';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=19';
-import { UI } from './ui.js?v=19';
-import { Director } from './director.js?v=19';
-import { Sound, moodOf } from './audio.js?v=19';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=19';
+import { buildModel } from './model.js?v=21';
+import { Sim } from './sim.js?v=21';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=21';
+import { UI } from './ui.js?v=21';
+import { Director } from './director.js?v=21';
+import { Sound, moodOf } from './audio.js?v=21';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=21';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=19').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=21').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     try {
@@ -81,18 +81,32 @@ class App {
     this.setView(new ClusterView(this, id), `#/dan/${encodeURIComponent(id)}`);
   }
   // キャラのいる場所を映す: 世界線にいれば世界線、移動中なら世界団マップか宇宙マップ
-  goToChar(c, keepFollow = false) {
+  // 追跡中の移動は「出発の世界線で飛び立つ → マップ上を飛ぶ → 到着の世界線に降りる」の3場面で映す
+  viewFor(c, follow = this.following) {
     const tr = this.sim.transitOf(c);
-    if (!tr) {
-      const changed = this.view?.kind !== 'world' || this.view.worldId !== c.world;
-      this.openWorld(c.world, { keepFollow });
-      if (changed || !keepFollow) this.view.focusOn(c.x, c.z);
-      return;
+    if (!tr) return { kind: 'world', id: c.world };
+    if (follow) {
+      const f = this.sim.transitProgress(tr);
+      if (f < 0.2) return { kind: 'world', id: tr.from };
+      if (f >= 0.8) return { kind: 'world', id: tr.to };
     }
-    if (tr.kind === 'line') {
-      const dan = this.model.worlds.get(tr.from).dan;
-      if (!(this.view?.kind === 'dan' && this.view.danId === dan)) this.openDan(dan, { keepFollow });
-    } else if (this.view?.kind !== 'universe') this.goUniverse({ keepFollow });
+    return tr.kind === 'line' ? { kind: 'dan', id: this.model.worlds.get(tr.from).dan } : { kind: 'universe' };
+  }
+  isShowing(v) {
+    const cur = this.view;
+    if (!cur || cur.kind !== v.kind) return false;
+    return v.kind === 'universe' || (v.kind === 'world' ? cur.worldId === v.id : cur.danId === v.id);
+  }
+  goToChar(c, keepFollow = false) {
+    const want = this.viewFor(c, keepFollow);
+    const changed = !this.isShowing(want);
+    if (changed && keepFollow) this.ui.flash();
+    if (want.kind === 'world') {
+      if (changed) this.openWorld(want.id, { keepFollow });
+      if (changed || !keepFollow) this.view.frameChar(c);
+    } else if (want.kind === 'dan') {
+      if (changed) this.openDan(want.id, { keepFollow });
+    } else if (changed) this.goUniverse({ keepFollow });
   }
   openWorld(id, opts = {}) {
     if (!opts.keepFollow) this.stopFollow();
@@ -190,9 +204,9 @@ class App {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
-    // 追跡中のキャラが移動している間は、見逃さないよう最大×5に抑える
+    // 追跡中のキャラが移動している間は、見逃さないよう最大×2に抑える
     const sel = this.following && this.selected && this.model.charById.get(this.selected);
-    const speed = sel && this.sim.transitOf(sel) ? Math.min(this.speed, 5) : this.speed;
+    const speed = sel && this.sim.transitOf(sel) ? Math.min(this.speed, 2) : this.speed;
     if (speed) this.sim.update((dt / REAL_SEC_PER_GAME_MIN) * speed);
     this.view.update(dt);
     this.ui.tick(dt);

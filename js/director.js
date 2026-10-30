@@ -1,5 +1,5 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=19';
+import { weighted } from './util.js?v=21';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
@@ -16,7 +16,8 @@ const now = () => performance.now() / 1000;
 // 場面ごとのカメラ: dist=距離, elev=見下ろす角度(ラジアン), orbit=回り込む速さ
 const SHOTS = {
   universe: { dist: 75, elev: 0.35, orbit: 0.06 },
-  transit: { dist: 38, elev: 0.4, orbit: 0.09 },
+  transit: { dist: 38, elev: 0.4, orbit: 0.02 },
+  flying: { dist: 26, elev: 0.22, orbit: 0.02 },
   closeup: { dist: 16, elev: 0.38, orbit: 0.07 },
   chat: { dist: 12, elev: 0.25, orbit: 0.05 },
   sleep: { dist: 13, elev: 0.75, orbit: 0.04 },
@@ -126,7 +127,11 @@ export class Director {
     // 移動中のキャラを映している間は、到着するまで他の小さな出来事に切り替えない
     const { app } = this;
     const sel = app.following && app.selected && app.model.charById.get(app.selected);
-    if (sel && app.sim.transitOf(sel)) { this.until = Math.max(this.until, now() + 4); this.prio = Math.max(this.prio, 60); }
+    const flying = !!(sel && app.sim.transitOf(sel));
+    if (flying) { this.until = Math.max(this.until, now() + 4); this.prio = Math.max(this.prio, 60); }
+    // 到着したらしばらくそのキャラを映し続ける
+    if (this.wasFlying && !flying && sel) { this.until = Math.max(this.until, now() + 8); this.newTake(); }
+    this.wasFlying = flying;
     if (now() > this.until) this.pickIdle();
     this.shot = this.chooseShot();
   }
@@ -144,6 +149,7 @@ export class Director {
     } else {
       const c = app.selected && app.model.charById.get(app.selected);
       if (!c) base = { ...SHOTS.establish, dist: v.bound * 1.2 };
+      else if (app.sim.transitOf(c)) base = SHOTS.flying;
       else if (c.state === 'sleep' || c.state === 'camp' || c.state === 'down') base = SHOTS.sleep;
       else if (c.act.kind === 'fight') base = SHOTS.fight;
       else if (c.act.kind === 'raid') base = SHOTS.raidMember;

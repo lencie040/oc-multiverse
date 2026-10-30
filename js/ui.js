@@ -1,7 +1,7 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=19';
-import { prioOf } from './director.js?v=19';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=19';
+import { CATS } from './sim.js?v=21';
+import { prioOf } from './director.js?v=21';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=21';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -174,6 +174,13 @@ export class UI {
     box.appendChild(el);
     while (box.children.length > 3) box.firstElementChild.remove();
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 6500);
+  }
+  // 場面の切り替えを目立たなくする短いフェード
+  flash() {
+    const el = $('#fade');
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
   }
   caption(text) {
     const el = $('#caption');
