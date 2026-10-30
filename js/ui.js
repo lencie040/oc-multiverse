@@ -1,7 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=23';
-import { prioOf } from './director.js?v=23';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=23';
+import { CATS } from './sim.js?v=24';
+import { prioOf } from './director.js?v=24';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=24';
+import { typeSummary, TYPE_COLOR } from './types.js?v=24';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -121,7 +122,7 @@ export class UI {
     const tm = fmtTime(sim.t);
     const h = sim.hour;
     $('#clk-icon').textContent = h >= 22 || h < 5 ? '🌙' : h < 7 ? '🌅' : h < 17.5 ? '☀️' : h < 20 ? '🌇' : '🌙';
-    $('#clk-text').textContent = tm.text;
+    $('#clk-text').textContent = `${sim.dateLabel()}（${tm.day}日目） ${tm.hh}:${tm.mm}`;
     const tr = this.app.sound.trackName;
     if (tr !== this.lastTrack) { $('#track').textContent = tr; this.lastTrack = tr; }
     const rep = this.app.sim.report;
@@ -201,10 +202,14 @@ export class UI {
     const wn = (id) => model.worlds.get(id)?.name ?? id;
     const rare = r.treasures.filter((x) => x.rare);
     const hw = r.hordesWon || [], hl = r.hordesLost || [], rw = r.racesWon || [];
+    const bds = r.birthdays || [], cts = r.contests || [];
+    const bigBd = bds.slice().sort((a, b) => b.n - a.n)[0];
     const head = r.raidsWon.length ? `号外！ レイドボス「${r.raidsWon[0].name}」を${r.raidsWon[0].n}人で撃破！`
       : rw.length ? `お宝発見！ ${rw[0].name}が伝説の「${rw[0].item}」を掘り当てる`
       : hl.length ? `${wn(hl[0].world)}の町、魔物の大群に荒らされる`
       : hw.length ? `${wn(hw[0].world)}、${hw[0].n}人で魔物の大群を撃退！`
+      : cts.length ? `勢力対抗「${cts[0].game}」、「${cts[0].win}」が「${cts[0].lose}」を破る`
+      : bigBd?.n >= 3 ? `${bigBd.name}の誕生日に${bigBd.n}人がお祝い`
       : rare.length ? `大発見！ ${rare[0].name}が「${rare[0].item}」を発見`
       : r.raidsLost.length ? `レイドボス「${r.raidsLost[0].name}」の猛威…${r.raidsLost[0].n}人が倒れる`
       : r.bestFriends.length ? `${r.bestFriends[0][0]}と${r.bestFriends[0][1]}が親友に`
@@ -212,14 +217,16 @@ export class UI {
       : r.mvp.length ? `魔物退治のMVPは${r.mvp[0].name}（${r.mvp[0].n}体）` : '今日も多元宇宙は平和でした';
     const li = (arr, f) => arr.length ? `<ul>${arr.map((x) => `<li>${f(x)}</li>`).join('')}</ul>` : '<ul><li>なし</li></ul>';
     box.innerHTML = `<div class="paper"><button class="x" title="閉じる">×</button>`
-      + `<div class="mast"><h1>多元日報</h1><small>${r.day + 1}日目の出来事（朝6時〜翌朝6時）</small></div>`
+      + `<div class="mast"><h1>多元日報</h1><small>${this.app.sim.dateLabel(r.day)}（${r.day + 1}日目）の出来事（朝6時〜翌朝6時）</small></div>`
       + `<div class="head">${escapeHtml(head)}</div>`
-      + `<div class="nums"><div><b>${r.battles}</b><span>魔物退治</span></div><div><b>${r.downs}</b><span>気絶</span></div><div><b>${r.travels}</b><span>世界線移動</span></div><div><b>${r.camps}</b><span>野宿</span></div><div><b>${r.duels}</b><span>撃退騒ぎ</span></div></div>`
+      + `<div class="nums"><div><b>${r.battles}</b><span>魔物退治</span></div><div><b>${r.downs}</b><span>気絶</span></div><div><b>${r.travels}</b><span>世界線移動</span></div><div><b>${r.camps}</b><span>野宿</span></div><div><b>${r.duels}</b><span>撃退騒ぎ</span></div><div><b>${r.meets || 0}</b><span>勢力の集まり</span></div></div>`
       + `<h4>⚔️ 魔物退治MVP</h4>${li(r.mvp, (m, i) => `${escapeHtml(m.name)} … ${m.n}体`)}`
       + `<h4>🐉 レイド</h4>${li([...r.raidsWon.map((x) => ({ ...x, res: 'win' })), ...r.raidsLost.map((x) => ({ ...x, res: 'lose' })), ...(r.raidsFled || []).map((x) => ({ ...x, res: 'fled' }))],
         (x) => `${escapeHtml(wn(x.world))}の「${escapeHtml(x.name)}」… ${x.res === 'win' ? `${x.n}人で撃破🏆` : x.res === 'lose' ? `${x.n}人が敗北💥` : `${x.n}人が撤退🏃`}`)}`
       + `<h4>🛡️ 防衛戦</h4>${li([...hw.map((x) => ({ ...x, ok: true })), ...hl], (x) => `${escapeHtml(wn(x.world))} … ${x.ok ? `${x.n}人で撃退🎊（${x.killed}体）` : `町が荒らされた🏚️`}`)}`
       + `<h4>🗺️ 宝の地図争奪戦</h4>${li(rw, (x) => `${escapeHtml(wn(x.world))}で ${escapeHtml(x.name)} が「${escapeHtml(x.item)}」を獲得（${x.n}人の争奪戦）`)}`
+      + `<h4>🎂 誕生日</h4>${li(bds, (x) => `${escapeHtml(x.name)} … ${x.n ? `${x.n}人がお祝い🎉` : 'ひっそりお祝い🍰'}`)}`
+      + `<h4>🏅 勢力対抗戦</h4>${li(cts, (x) => `${escapeHtml(wn(x.world))}の「${escapeHtml(x.game)}」… 「${escapeHtml(x.win)}」の勝ち（vs「${escapeHtml(x.lose)}」）`)}`
       + `<h4>💕 新しい親友</h4>${li(r.bestFriends, ([a, b]) => `${escapeHtml(a)} と ${escapeHtml(b)}`)}`
       + `<h4>💎 見つかった宝物</h4>${li([...rare, ...r.treasures.filter((x) => !x.rare)].slice(0, 8), (x) => `${x.rare ? '💎' : '✨'} ${escapeHtml(x.name)}「${escapeHtml(x.item)}」`)}`
       + `<h4>🌌 世界団を越えたキャラ</h4>${li(r.danJumps, (x) => `${escapeHtml(x.name)}（${escapeHtml(wn(x.from))} → ${escapeHtml(wn(x.to))}）`)}`
@@ -295,7 +302,9 @@ export class UI {
     const { sim } = this.app;
     const rs = sim.raids.filter(filter);
     const hs = sim.hordes.filter(filter), races = sim.races.filter(filter);
-    if (!rs.length && !hs.length && !races.length) return '';
+    const ps = sim.parties.filter(filter), ms = sim.meets.filter((m) => m.started && filter(m)), cs = sim.contests.filter((c) => c.started && filter(c));
+    if (!rs.length && !hs.length && !races.length && !ps.length && !ms.length && !cs.length) return '';
+    const nm = (id) => escapeHtml(this.app.model.charById.get(id).name);
     return `<h3>⚡ 発生中のイベント</h3>`
       + hs.map((h) => `<div class="raidbox" data-w="${escapeHtml(h.world)}">${this.wchip(h.world)}<b>🛡️ 魔物の大群</b><small>撃破 ${h.killed}/${h.size}体 ・ 町の耐久 ${h.hp}/${h.maxHp}</small></div>`).join('')
       + races.map((r) => `<div class="raidbox" data-w="${escapeHtml(r.world)}">${this.wchip(r.world)}<b>🗺️ 「${escapeHtml(r.item)}」争奪戦</b><small>挑戦者 ${r.racers.map((id) => escapeHtml(this.app.model.charById.get(id).name)).join('、')}</small></div>`).join('')
@@ -304,7 +313,20 @@ export class UI {
       return `<div class="raidbox" data-w="${escapeHtml(r.world)}">${this.wchip(r.world)}<b>🐉 ${escapeHtml(r.name)}</b>`
         + `<small>戦闘力 ${r.power} ・ 集まった戦力 ${Math.round(sim.raidPower(r))}（${sim.raidFighters(r).length}組）`
         + ` ・ ${r.phase === 'fight' ? '激闘中！' : `あと${left}分で開戦`}</small></div>`;
-    }).join('');
+    }).join('')
+      + ps.map((p) => `<div class="raidbox fest" data-w="${escapeHtml(p.world)}">${this.wchip(p.world)}<b>🎂 ${p.hosts.map(nm).join('・')}の誕生日パーティー</b><small>お祝いに来た人 ${p.guests.length}人</small></div>`).join('')
+      + cs.map((c) => `<div class="raidbox fest" data-w="${escapeHtml(c.world)}">${this.wchip(c.world)}<b>🚩 勢力対抗「${escapeHtml(c.game)}」</b><small>「${escapeHtml(c.a)}」vs「${escapeHtml(c.b)}」</small></div>`).join('')
+      + ms.map((m) => `<div class="raidbox fest" data-w="${escapeHtml(m.world)}">${this.wchip(m.world)}<b>${m.kind === 'drill' ? '🎖️' : '📯'} 「${escapeHtml(m.faction)}」の${m.kind === 'drill' ? '合同訓練' : m.kind === 'market' ? '商談会' : '集会'}</b><small>${m.members.length}人参加</small></div>`).join('');
+  }
+
+  // 今日と、これから1週間の誕生日
+  birthdayList() {
+    const { sim } = this.app;
+    const rows = [];
+    for (let i = 0; i < 7 && rows.length < 8; i++) {
+      for (const c of sim.birthdaysOn(sim.day + i)) rows.push(this.charRow(c, `${i === 0 ? '🎂 今日！' : i === 1 ? '明日' : sim.dateLabel(sim.day + i)}`));
+    }
+    return `<h3>🎂 誕生日カレンダー</h3><div class="list">${rows.slice(0, 8).join('') || '<div class="sub">1週間以内に誕生日の人はいません</div>'}</div>`;
   }
 
   charRow(c, note) {
@@ -332,7 +354,7 @@ export class UI {
     const { model, sim } = this.app;
     const boards = [
       ['⚔️ 魔物退治', (c) => c.kills, '体'], ['🧳 世界線移動', (c) => c.travels, '回'], ['💎 宝物', (c) => c.treasures, '個'],
-      ['🐉 レイド勝利', (c) => c.raidWins, '回'], ['💕 友達の数', (c) => sim.friendCount(c), '人'],
+      ['🐉 レイド勝利', (c) => c.raidWins, '回'], ['💕 友達の数', (c) => sim.friendCount(c), '人'], ['🏅 対抗戦の勝利', (c) => c.contestWins, '回'],
     ];
     const medal = ['🥇', '🥈', '🥉'];
     return `<h3>🏆 ランキング</h3><div class="rank-grid">${boards.map(([title, f, unit]) => {
@@ -346,6 +368,7 @@ export class UI {
     return `<h2>🌌 宇宙</h2><div class="sub">世界団をクリックすると中の世界線が見られます</div>`
       + `<div class="kv"><span>世界団</span><span>${model.dans.length}</span><span>世界線</span><span>${model.worlds.size}</span><span>キャラクター</span><span>${model.chars.length}</span></div>`
       + this.raidBoxes()
+      + this.birthdayList()
       + `<h3>みんなの今</h3>${this.breakdown(model.chars)}`
       + `<h3>世界団</h3><div class="list">${model.dans.map((d) => {
         const n = model.chars.filter((c) => model.worlds.get(c.world)?.dan === d.id).length;
@@ -353,7 +376,7 @@ export class UI {
       }).join('')}</div>`
       + this.rankings()
       + `<h3>旅をしているキャラ</h3><div class="list">${model.chars.filter((c) => c.trip && !c.partyLeader).map((c) => this.charRow(c, this.whereChip(c))).join('') || '<div class="sub">今はいません</div>'}</div>`
-      + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。世界線の移動には移動ptを使います（汎異記号の1文字目が同じ世界線へは1pt、違う世界線へは5pt、世界団の移動は40pt。仲間を連れていくと人数分）。ptはランク7で2日に1pt、ランク8で1日3pt、9で7pt、10で15pt、11で40ptたまり、3日分までためられます。世界団を越えられるのはランク11以上で、その日は力が半減します。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。</div>`;
+      + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。世界線の移動には移動ptを使います（汎異記号の1文字目が同じ世界線へは1pt、違う世界線へは5pt、世界団の移動は40pt。仲間を連れていくと人数分）。ptはランク7で2日に1pt、ランク8で1日3pt、9で7pt、10で15pt、11で40ptたまり、3日分までためられます。世界団を越えられるのはランク11以上で、その日は力が半減します。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。魔物やレイドボスにもタイプがあり、相性がいいと戦闘力が上がります。誕生日には夕方に友達が集まってパーティーをし、勢力は本拠地で集会や合同訓練、ほかの勢力との対抗戦を開きます。</div>`;
   }
 
   danInfo(d) {
@@ -415,11 +438,14 @@ export class UI {
     const party = c.partyLeader ? [model.charById.get(c.partyLeader)] : c.party.map((id) => model.charById.get(id));
     const rate = sim.ptRate(c);
     const danNext = c.rank >= 11 ? (sim.canDan(c) ? `可能（${40 * sim.partySize(c)}pt）` : `ptが足りない（${40 * sim.partySize(c)}pt必要）`) : '不可（ランク11未満）';
+    const ts = typeSummary(c.types);
+    const tchip = (t) => `<b class="tchip" style="background:${TYPE_COLOR[t] || '#888'}">${escapeHtml(t)}</b>`;
+    const bd = c.birthday ? `${escapeHtml(c.birthday)}${sim.isBirthday(c) ? ' 🎂 今日が誕生日！' : ''}` : '';
     const moves = rate ? `${sim.fmtPt(c.pts)}pt ／ 上限${sim.fmtPt(sim.ptCap(c))}pt（1日+${sim.fmtPt(rate)}pt）`
       : c.partyLeader ? 'リーダーと同行中' : 'ptがたまらない（ランク7未満）';
     return `<button class="close" data-act="close" title="閉じる (Esc)">×</button>`
       + `<div class="avatar">${avatar}</div>`
-      + `<h2>${escapeHtml(c.name)}</h2><div class="sub">${escapeHtml(c.yomi)} ・ No.${escapeHtml(c.id)}</div>`
+      + `<h2>${sim.isBirthday(c) ? '🎂 ' : ''}${escapeHtml(c.name)}</h2><div class="sub">${escapeHtml(c.yomi)} ・ No.${escapeHtml(c.id)}</div>`
       + `<div class="btns"><button class="btn ${following ? 'on' : ''}" data-act="follow">🎥 ${following ? '追跡中' : '追跡する'} (T)</button>`
       + (this.app.view.worldId !== c.world || sim.transitOf(c) ? `<button class="btn" data-c="${escapeHtml(c.id)}">📍 いる場所へ</button>` : '') + `</div>`
       + `<h3>いま</h3><div class="row" style="cursor:default"><i class="ico" style="background:${CATS[d.cat]?.color}">${d.icon}</i>${escapeHtml(d.text)}</div>`
@@ -429,11 +455,13 @@ export class UI {
       + `<span>戦闘力</span><span>${pw}${c.halvedDay === sim.day ? '（世界団移動で半減中）' : ''}${c.trainDay === sim.day ? '（修行で1割増し）' : ''}</span>`
       + `<span>移動pt</span><span>${moves}</span><span>世界団移動</span><span>${danNext}</span>`
       + (party.length ? `<span>${c.partyLeader ? 'リーダー' : '仲間'}</span><span>${party.map((p) => escapeHtml(p.name)).join('、')}</span>` : '')
-      + (c.type ? `<span>タイプ</span><span>${escapeHtml(c.type)}</span>` : '')
+      + (c.type ? `<span>タイプ</span><span>${c.types.map(tchip).join('')}</span>` : '')
+      + (ts && (ts.good.length || ts.bad.length) ? `<span>相性</span><span>${ts.good.length ? `有利 ${ts.good.map(tchip).join('')}` : ''}${ts.bad.length ? ` 苦手 ${ts.bad.map(tchip).join('')}` : ''}</span>` : '')
+      + (bd ? `<span>誕生日</span><span>${bd}</span>` : '')
       + (c.zoku ? `<span>族</span><span>${escapeHtml(c.zoku)}</span>` : '')
       + (c.seiryoku ? `<span>勢力</span><span>${escapeHtml(c.seiryoku)}</span>` : '')
       + `<span>仕事</span><span>${escapeHtml(c.job)}</span><span>趣味</span><span>${c.hobbies.map(escapeHtml).join('、')}</span>`
-      + `<span>記録</span><span>魔物退治 ${c.kills} ・ レイド勝利 ${c.raidWins} ・ 気絶 ${c.downs} ・ 移動 ${c.travels} ・ 発見した宝物 ${c.treasures}</span></div>`
+      + `<span>記録</span><span>魔物退治 ${c.kills} ・ レイド勝利 ${c.raidWins} ・ 気絶 ${c.downs} ・ 移動 ${c.travels} ・ 発見した宝物 ${c.treasures} ・ 対抗戦の勝利 ${c.contestWins}</span></div>`
       + this.friendList(c)
       + `<h3>種族値</h3><div class="bars">${c.stats.map((v, i) => `<span>${STAT_NAMES[i]}</span><span class="b"><i style="width:${Math.min(100, (v / maxStat) * 100)}%"></i></span><span>${v}</span>`).join('')}</div>`
       + `<h3>最近の出来事</h3><div class="mlog">${c.log.slice().reverse().map((e) => { const t = fmtTime(e.t); return `<div>${t.day}日目 ${t.hh}:${t.mm} ${escapeHtml(e.text)}</div>`; }).join('') || 'まだありません'}</div>`;

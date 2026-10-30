@@ -222,3 +222,11 @@ body.nopanels #events, body.nopanels #info { display: none; }
 .world-label em.raid.race { background: #e0a020; }
 .horde-label { border-color: #ff9a3a; box-shadow: 0 0 18px rgba(255, 154, 58, .5); background: rgba(40, 18, 0, .85); }
 .race-label { border-color: #ffd23a; box-shadow: 0 0 14px rgba(255, 210, 58, .45); background: rgba(40, 30, 0, .85); }
+.raidbox.fest { border-color: #ffc94a; background: rgba(255, 201, 74, .1); }
+.raidbox.fest:hover { background: rgba(255, 201, 74, .2); }
+.raidbox.fest b { color: #ffe08a; }
+.tchip { display: inline-block; padding: 0 6px; margin: 1px 3px 1px 0; border-radius: 6px; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, .5); }
+.fest-label { border-color: #ffc94a; box-shadow: 0 0 14px rgba(255, 201, 74, .45); background: rgba(40, 28, 0, .85); }
+.world-label em.raid.fest { background: #d08a1a; }
+.fest-label em.tm-a { font-style: normal; color: #ff8a7a; }
+.fest-label em.tm-b { font-style: normal; color: #8ab8ff; }

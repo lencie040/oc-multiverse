@@ -2,9 +2,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, mat } from './props.js?v=23';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=23';
-import { CATS } from './sim.js?v=23';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=24';
+import { TYPE_COLOR } from './types.js?v=24';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=24';
+import { CATS } from './sim.js?v=24';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -401,6 +402,8 @@ export class ClusterView extends BaseView {
       const html = (raid ? `<em class="raid">🐉 レイド${raid.phase === 'fight' ? '激闘中' : '発生中'}</em>` : '')
         + (hd ? `<em class="raid">🛡️ 防衛戦</em>` : '')
         + (race ? `<em class="raid race">🗺️ 宝探し</em>` : '')
+        + (sim.parties.some((p) => p.world === wid) ? `<em class="raid fest">🎂 誕生日会</em>` : '')
+        + (sim.contests.some((c) => c.started && c.world === wid) ? `<em class="raid fest">🚩 対抗戦</em>` : '')
         + (show ? `<b>${escapeHtml(n.w.name)}</b><small>${escapeHtml(wid)}</small>` : '')
         + `<span>👤${present.length}${visitors ? ` 🧳${visitors}` : ''}${mons ? ` 👾${mons}` : ''}</span>`;
       if (html !== n.last) { n.lb.inner.innerHTML = html; n.last = html; }
@@ -793,7 +796,7 @@ export class WorldView extends BaseView {
       u.nl.visible = (settings.names && camD < 110) || c.id === this.app.selected || o === this.hovered;
       const d = sim.displayAct(c);
       const visitor = c.home !== this.worldId;
-      const html = `<i style="background:${CATS[d.cat]?.color || '#999'}">${d.icon}</i>${visitor ? '🧳' : ''}${escapeHtml(c.name)}`;
+      const html = `<i style="background:${CATS[d.cat]?.color || '#999'}">${d.icon}</i>${visitor ? '🧳' : ''}${sim.isBirthday(c) ? '🎂' : ''}${escapeHtml(c.name)}`;
       if (html !== u.last) { o.userData.nl.element.innerHTML = html; u.last = html; }
       if (c.bubble && camD < 160) {
         u.bl.visible = true;
@@ -851,9 +854,9 @@ export class WorldView extends BaseView {
       alive.add(m.id);
       let o = this.monObjs.get(m.id);
       if (!o) {
-        o = buildMonster(m.boss);
+        o = buildMonster(m.boss, TYPE_COLOR[m.type?.[0]]);
         o.position.set(m.x, 0, m.z);
-        const lb = label(`${m.horde ? '大群' : m.boss ? '大魔物' : '魔物'} ${m.power}`, 'mon-label');
+        const lb = label(`${m.type?.[0] ? m.type[0] + 'の' : ''}${m.horde ? '大群' : m.boss ? '大魔物' : '魔物'} ${m.power}`, 'mon-label');
         lb.position.y = m.boss ? 2.4 : 2.8;
         o.add(lb);
         o.userData.lb = lb;
@@ -898,7 +901,7 @@ export class WorldView extends BaseView {
       }
       const n = sim.raidFighters(r).length;
       const left = Math.max(0, Math.ceil(r.until - sim.t));
-      const html = `<b>🐉 レイドボス「${escapeHtml(r.name)}」</b><span>戦闘力 ${r.power} ・ 集まった戦力 ${Math.round(sim.raidPower(r))}（${n}組）</span>`
+      const html = `<b>🐉 レイドボス「${escapeHtml(r.name)}」</b><span>${r.type ? `${escapeHtml(r.type[0])}タイプ ・ ` : ''}戦闘力 ${r.power} ・ 集まった戦力 ${Math.round(sim.raidPower(r))}（${n}組）</span>`
         + `<i>${fight ? '⚔️ 激闘中！' : `集合中… あと${left}分で開戦`}</i>`;
       if (html !== u.last) { u.lb.inner.innerHTML = html; u.last = html; }
     }
@@ -921,7 +924,7 @@ export class WorldView extends BaseView {
         this.eventObjs.set(key, o);
       }
       const hearts = '❤️'.repeat(Math.max(0, hd.hp)) + '🖤'.repeat(Math.max(0, hd.maxHp - hd.hp));
-      const html = `<b>🛡️ 防衛戦！ 魔物の大群が迫っている</b><span>撃破 ${hd.killed} / ${hd.size}体 ・ 守っている ${sim.charsIn(this.worldId).filter((c) => c.act.kind === 'defend').length}人</span><i>町の耐久 ${hearts}</i>`;
+      const html = `<b>🛡️ 防衛戦！ ${hd.type ? escapeHtml(hd.type[0]) + 'タイプの' : ''}魔物の大群が迫っている</b><span>撃破 ${hd.killed} / ${hd.size}体 ・ 守っている ${sim.charsIn(this.worldId).filter((c) => c.act.kind === 'defend').length}人</span><i>町の耐久 ${hearts}</i>`;
       if (html !== o.userData.last) { o.userData.lb.inner.innerHTML = html; o.userData.last = html; }
     }
     for (const r of sim.races) {
@@ -942,6 +945,53 @@ export class WorldView extends BaseView {
       const here = r.racers.filter((id) => this.app.model.charById.get(id).world === r.world).length;
       const html = `<b>🗺️ 「${escapeHtml(r.item)}」が眠る場所</b><span>挑戦者 ${r.racers.length}人（到着 ${here}人）</span>`;
       if (html !== o.userData.last) { o.userData.lb.inner.innerHTML = html; o.userData.last = html; }
+    }
+    // 誕生日パーティーのケーキ、勢力の旗
+    const fest = (key, x, z, build, ly, cls) => {
+      evs.add(key);
+      let o = this.eventObjs.get(key);
+      if (!o) {
+        o = build();
+        o.position.set(x, 0, z);
+        const lb = label('', `raid-label fest-label ${cls}`);
+        lb.position.y = ly;
+        o.add(lb);
+        o.userData.lb = lb;
+        o.userData.last = '';
+        this.scene.add(o);
+        this.eventObjs.set(key, o);
+      }
+      return o;
+    };
+    const setHtml = (o, html) => { if (html !== o.userData.last) { o.userData.lb.inner.innerHTML = html; o.userData.last = html; } };
+    const fcolor = (name) => `hsl(${hashStr(name) % 360}, 70%, 55%)`;
+    const names = (ids) => ids.map((id) => escapeHtml(this.app.model.charById.get(id).name)).join('・');
+    for (const p of sim.parties) {
+      if (p.world !== this.worldId) continue;
+      const o = fest('p' + p.id, p.x, p.z, buildCake, 8, '');
+      o.userData.balloons.position.y = Math.sin(t * 1.5 + p.id) * 0.3;
+      o.userData.balloons.rotation.y += dt * 0.2;
+      setHtml(o, `<b>🎂 ${names(p.hosts)}の誕生日パーティー</b><span>お祝いに来た人 ${p.guests.length}人</span>`);
+    }
+    for (const m of sim.meets) {
+      if (!m.started || m.world !== this.worldId) continue;
+      const o = fest('m' + m.id, m.x, m.z - 4, () => buildFlag(fcolor(m.faction)), 8, '');
+      o.userData.cloth.rotation.y = Math.sin(t * 2 + m.id) * 0.25;
+      setHtml(o, `<b>${m.kind === 'drill' ? '🎖️' : '📯'} 「${escapeHtml(m.faction)}」の${m.kind === 'drill' ? '合同訓練' : m.kind === 'market' ? '商談会' : '集会'}</b><span>${m.members.length}人参加</span>`);
+    }
+    for (const c of sim.contests) {
+      if (!c.started || c.world !== this.worldId) continue;
+      const o = fest('c' + c.id, c.x, c.z, () => {
+        const g = new THREE.Group();
+        const a = buildFlag('#e8483a'), b = buildFlag('#3a78e8');
+        a.position.set(-7, 0, 0); b.position.set(7, 0, 0); b.rotation.y = Math.PI;
+        g.add(a, b);
+        g.userData.flags = [a, b];
+        return g;
+      }, 8, '');
+      o.userData.flags.forEach((f, i) => { f.userData.cloth.rotation.y = Math.sin(t * 3 + i) * 0.3; });
+      const left = Math.max(0, Math.ceil(c.until - sim.t));
+      setHtml(o, `<b>🚩 勢力対抗「${escapeHtml(c.game)}」</b><span><em class="tm-a">「${escapeHtml(c.a)}」</em>vs<em class="tm-b">「${escapeHtml(c.b)}」</em></span><i>決着まであと${left}分</i>`);
     }
     for (const key of [...this.eventObjs.keys()]) if (!evs.has(key)) this.removeObj(this.eventObjs, key);
 

@@ -1,6 +1,6 @@
 // ローポリの構造物・自然物
 import * as THREE from 'three';
-import { FONT } from './util.js?v=23';
+import { FONT } from './util.js?v=24';
 
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -770,9 +770,12 @@ export function buildPortal(color) {
   return g;
 }
 
-export function buildMonster(boss) {
+// tint: タイプの色 (体の色にうっすら混ぜる)
+export function buildMonster(boss, tint = null) {
   const g = new THREE.Group();
-  const body = mesh(G.ico, mat(boss ? '#4a0a2a' : '#2a1a3a', { emissive: boss ? '#5a0a20' : '#1a0a2a', emissiveIntensity: 0.5 }), 0, 1, 0, 1.8);
+  let col = boss ? '#4a0a2a' : '#2a1a3a';
+  if (tint) col = '#' + new THREE.Color(col).lerp(new THREE.Color(tint), 0.45).getHexString();
+  const body = mesh(G.ico, mat(col, { emissive: tint || (boss ? '#5a0a20' : '#1a0a2a'), emissiveIntensity: tint ? 0.25 : 0.5 }), 0, 1, 0, 1.8);
   g.add(body);
   for (const x of [-0.35, 0.35]) g.add(mesh(G.ball, glow('#ff3030', 2), x, 1.25, 0.75, 0.28));
   for (let i = 0; i < 4; i++) {
@@ -828,6 +831,44 @@ export function buildTreasureMark() {
   sh.position.set(2.4, 0, 1.2);
   sh.rotation.z = 0.35;
   g.add(sh);
+  return g;
+}
+
+// 誕生日パーティー: 大きなケーキと風船
+export function buildCake() {
+  const g = new THREE.Group();
+  g.add(mesh(G.cyl, mat('#d8a070'), 0, 0.2, 0, 4.6, 0.4, 4.6));
+  g.add(mesh(G.cyl, mat('#fff4ec'), 0, 0.9, 0, 3.4, 1.1, 3.4));
+  g.add(mesh(G.cyl, mat('#f6b8cc'), 0, 1.9, 0, 2.4, 0.9, 2.4));
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    g.add(mesh(G.ball, mat('#e83a4a'), Math.cos(a) * 1.4, 1.55, Math.sin(a) * 1.4, 0.4));
+  }
+  for (let i = 0; i < 3; i++) {
+    const x = (i - 1) * 0.5;
+    g.add(mesh(G.cyl6, mat('#fff0a0'), x, 2.75, 0, 0.12, 0.8, 0.12));
+    g.add(mesh(G.ball, glow('#ffb030', 2), x, 3.25, 0, 0.18));
+  }
+  const balloons = new THREE.Group();
+  ['#ff6a8a', '#6ac8ff', '#ffd84a', '#9a7aff', '#7ae08a'].forEach((c, i) => {
+    const a = (i / 5) * Math.PI * 2 + 0.4;
+    const x = Math.cos(a) * 3.6, z = Math.sin(a) * 3.6, y = 5 + (i % 2) * 0.8;
+    balloons.add(mesh(G.ball, mat(c, { roughness: 0.35 }), x, y, z, 1, 1.2, 1));
+    balloons.add(mesh(G.cyl6, mat('#dddddd'), x, y / 2 - 0.3, z, 0.03, y - 0.6, 0.03));
+  });
+  g.add(balloons);
+  g.userData.balloons = balloons;
+  return g;
+}
+
+// 勢力の旗 (対抗戦は2本、集会は1本)
+export function buildFlag(color) {
+  const g = new THREE.Group();
+  g.add(mesh(G.cyl6, mat('#5a4a3a'), 0, 3, 0, 0.18, 6, 0.18));
+  const cloth = mesh(G.box, mat(color, { side: THREE.DoubleSide }), 1.1, 5.1, 0, 2.2, 1.4, 0.06);
+  g.add(cloth);
+  g.add(mesh(G.ball, mat('#ffd040', { metalness: 0.6 }), 0, 6.1, 0, 0.35));
+  g.userData.cloth = cloth;
   return g;
 }
 

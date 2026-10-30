@@ -1,10 +1,10 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=23';
+import { weighted } from './util.js?v=24';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
   ['🐉', 100], ['🔥', 95], ['🛡️', 93], ['🏆', 92], ['💰', 90], ['🎊', 86], ['🏚️', 86], ['🗺️', 72], ['💥', 88], ['🌌', 80], ['💎', 75], ['💕', 70], ['🥊', 62], ['📣', 60],
-  ['🏃', 55], ['🙅', 45], ['🌀', 40], ['🎒', 35], ['⛺', 30], ['💫', 28], ['⚔️', 20], ['🏠', 15],
+  ['🎂', 84], ['🚩', 82], ['🏅', 78], ['🎉', 66], ['🎖️', 52], ['📯', 50], ['🏃', 55], ['🙅', 45], ['🌀', 40], ['🎒', 35], ['⛺', 30], ['💫', 28], ['⚔️', 20], ['🏠', 15],
 ];
 export function prioOf(e) {
   for (const [k, p] of PRIO) if (e.text.startsWith(k)) return e.major ? p : p * 0.5;
@@ -26,6 +26,7 @@ const SHOTS = {
   raidMember: { dist: 30, elev: 0.5, orbit: 0.1 },
   raidGather: { dist: 62, elev: 0.82, orbit: 0.07 },
   raidFight: { dist: 44, elev: 0.5, orbit: 0.2 },
+  fest: { dist: 28, elev: 0.55, orbit: 0.09 },
   establish: { dist: 0, elev: 0.95, orbit: 0.05 },
 };
 
@@ -123,6 +124,9 @@ export class Director {
       else if (c.act.kind === 'raid') w = 7;
       else if (c.act.kind === 'defend') w = 6;
       else if (c.act.kind === 'dig') w = 5;
+      else if (c.act.kind === 'contest') w = 6;
+      else if (c.act.kind === 'party') w = app.sim.parties.some((p) => p.hosts.includes(c.id)) ? 8 : 3;
+      else if (c.act.kind === 'meet') w = 1.5;
       else if (c.act.kind === 'fight') w = 5;
       else if (c.act.kind === 'chat') w = 3;
       else if (c.trip) w = 3;
@@ -172,6 +176,7 @@ export class Director {
       else if (c.act.kind === 'fight' || (c.act.kind === 'defend' && c.act.fightUntil)) base = SHOTS.fight;
       else if (c.act.kind === 'defend') base = SHOTS.walk;
       else if (c.act.kind === 'raid') base = SHOTS.raidMember;
+      else if (['party', 'meet', 'contest', 'watch'].includes(c.act.kind) && !c.walking) base = SHOTS.fest;
       else if (c.act.kind === 'chat' || c.act.cat === 'social') base = SHOTS.chat;
       else if (c.walking) base = SHOTS.walk;
       else base = SHOTS.closeup;

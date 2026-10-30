@@ -1,19 +1,19 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=23';
-import { Sim } from './sim.js?v=23';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=23';
-import { UI } from './ui.js?v=23';
-import { Director } from './director.js?v=23';
-import { Sound, moodOf } from './audio.js?v=23';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=23';
+import { buildModel } from './model.js?v=24';
+import { Sim } from './sim.js?v=24';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=24';
+import { UI } from './ui.js?v=24';
+import { Director } from './director.js?v=24';
+import { Sound, moodOf } from './audio.js?v=24';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=24';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=23').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=24').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     try {
@@ -190,7 +190,7 @@ class App {
   eventSound(e) {
     const here = this.view?.kind === 'world' && e.world === this.view.worldId;
     const t = e.text;
-    const big = [['🐉', 'horn'], ['🏆', 'fanfare'], ['💥', 'lose'], ['🏃', 'whoosh'], ['🛡️', 'horn'], ['💰', 'fanfare'], ['🎊', 'fanfare'], ['🏚️', 'lose'], ['🗺️', 'treasure'], ['🌌', 'dan'], ['💎', 'treasure'], ['💕', 'heart'], ['📣', 'chime'], ['🥊', 'boss']];
+    const big = [['🐉', 'horn'], ['🏆', 'fanfare'], ['💥', 'lose'], ['🏃', 'whoosh'], ['🛡️', 'horn'], ['💰', 'fanfare'], ['🎊', 'fanfare'], ['🏚️', 'lose'], ['🗺️', 'treasure'], ['🌌', 'dan'], ['💎', 'treasure'], ['💕', 'heart'], ['📣', 'chime'], ['🥊', 'boss'], ['🎂', 'fanfare'], ['🏅', 'fanfare'], ['🚩', 'horn'], ['🎉', 'chime']];
     for (const [k, name] of big) if (t.startsWith(k)) return this.sound.play(name);
     if (!here) return;
     if (t.startsWith('🌀') || t.includes('に到着した')) this.sound.play('portal');

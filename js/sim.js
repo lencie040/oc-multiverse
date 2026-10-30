@@ -1,6 +1,7 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=23';
-import { randomWild, randomTown, hopCost, cheapestPath } from './model.js?v=23';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=24';
+import { randomWild, randomTown, hopCost, cheapestPath } from './model.js?v=24';
+import { splitTypes, edge, edgeNote, monsterType } from './types.js?v=24';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -15,6 +16,7 @@ export const CATS = {
   explore: { label: '探検', icon: '🧭', color: '#3fbf9f' },
   help: { label: '手伝い', icon: '🤝', color: '#ffcf9a' },
   raid: { label: 'レイド', icon: '🐉', color: '#ff3a6a' },
+  event: { label: '催し', icon: '🎪', color: '#ffd84a' },
 };
 
 const HOBBIES = ['読書', 'ゲーム', '釣り', 'お絵かき', '散歩', '歌う', '楽器演奏', '料理', 'ガーデニング', '写真撮影',
@@ -30,7 +32,23 @@ const SHOPS = ['食材の買い出し', '雑貨を買う', 'おやつを買う',
 const HELP = ['荷物運びを手伝う', '近所の掃除を手伝う', '畑を手伝う', '屋根の修理を手伝う', '迷子の道案内'];
 const TREASURES = ['古いコイン', 'きれいな石', '謎の地図', '化石', '光る羽根', '古びた鍵', '小さな宝石', '壊れた時計', '不思議な種'];
 const RARE = ['伝説の剣のかけら', '星の涙', '虹色の宝玉', '古代の王冠'];
-const RAID_TITLE = ['巨竜', '魔王', '大蛇', '鉄巨人', '黒獅子', '亡霊王', '大怪鳥', '深淵の主'];
+const RAID_TITLE = [['巨竜', '竜'], ['魔王', '悪'], ['大蛇', '毒'], ['鉄巨人', '鋼'], ['黒獅子', '闇'], ['亡霊王', '霊'], ['大怪鳥', '飛'], ['深淵の主', '水']];
+// カレンダー (うるう年なし)。シミュレーション0日目 = 初めて開いた日の日付
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const doyOf = (m, d) => MONTH_DAYS.slice(0, m - 1).reduce((a, b) => a + b, 0) + Math.min(d, MONTH_DAYS[m - 1]) - 1;
+const todayDoy = () => { const n = new Date(); return doyOf(n.getMonth() + 1, n.getDate()); };
+const GIFTS = ['手作りケーキ', '花束', 'マフラー', 'ぬいぐるみ', '手紙', 'お菓子の詰め合わせ', '似顔絵', 'キラキラの石', '新しい本', 'おそろいのキーホルダー'];
+// 勢力の催し。名前から種類を決める
+const MEET_KINDS = {
+  drill: { cat: 'training', label: '合同訓練', icon: '🎖️', lines: ['気合い入れていくぞ！', 'せーの！', '隊列、そろえて！', 'もう一本！'] },
+  market: { cat: 'work', label: '商談会', icon: '📯', lines: ['いらっしゃいませ〜', '新作できました！', 'これ、売れると思う？', 'お安くしときますよ'] },
+  meet: { cat: 'event', label: '集会', icon: '📯', lines: ['今日の議題は…', '最近どう？', '次の計画だけど', 'みんな集まった？'] },
+};
+const CONTESTS = [
+  { name: '綱引き', stat: [0, 1] }, { name: 'リレー', stat: [5] }, { name: '腕相撲', stat: [1] }, { name: '雪合戦', stat: [3, 5] },
+  { name: '料理対決', stat: null }, { name: 'クイズ大会', stat: null }, { name: 'ダンスバトル', stat: [5, 4] }, { name: '我慢くらべ', stat: [2, 4] },
+];
+const BUSY = ['raid', 'defend', 'dig', 'party', 'meet', 'contest', 'watch', 'fight', 'battle', 'portal', 'ask', 'sleep', 'camp'];
 const RAID_RATE = 0.00015;
 // 移動pt: 1日にたまる量 (ランク7は2日で1pt)。3日分までためられる
 export const PT_RATE = { 7: 0.5, 8: 3, 9: 7, 10: 15, 11: 40 };
@@ -42,7 +60,7 @@ export const TRANSIT = '@transit'; // 移動中のキャラの world
 const EMOTES = {
   daily: ['😋', '🥤', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '💪', '📦'], sabori: ['😪', '🎮', '💤'],
   social: ['💬', '😆', '🎶'], training: ['🔥', '💪', '🥋'], shopping: ['🛍️', '💰', '😍'], explore: ['👀', '🧭', '❓'],
-  help: ['👍', '🤝', '😊'], move: ['🎵', '👟'],
+  help: ['👍', '🤝', '😊'], move: ['🎵', '👟'], event: ['🎉', '🎈', '🥳'],
 };
 const FRIEND = 10, BEST = 25; // 友達・親友になる友好度 // 1ゲーム分あたりの出現率 (昼のみ)
 
@@ -64,6 +82,10 @@ export class Sim {
     this.hordes = [];
     this.races = [];
     this.repair = {};
+    this.parties = []; // 誕生日パーティー
+    this.meets = []; // 勢力の集会・合同訓練
+    this.contests = []; // 勢力対抗戦
+    this.calStart = todayDoy();
     this.nextEventId = 1;
     this.nextRaidId = 1;
     for (const w of model.worlds.values()) {
@@ -73,6 +95,22 @@ export class Sim {
       for (let i = 0; i < Math.round(cap * 0.6); i++) this.spawnMonster(w);
     }
     for (const c of model.chars) this.initChar(c);
+    // 誕生日の早見表と、勢力 (本拠地 = いちばん多く住んでいる世界線)
+    this.bdays = new Map();
+    for (const c of model.chars) {
+      if (c.bdDoy == null) continue;
+      if (!this.bdays.has(c.bdDoy)) this.bdays.set(c.bdDoy, []);
+      this.bdays.get(c.bdDoy).push(c);
+    }
+    const fs = new Map();
+    for (const c of model.chars) if (c.seiryoku) { if (!fs.has(c.seiryoku)) fs.set(c.seiryoku, []); fs.get(c.seiryoku).push(c); }
+    this.factions = [...fs].filter(([, ms]) => ms.length >= 3).map(([name, ms]) => {
+      const cnt = {};
+      for (const c of ms) cnt[c.home] = (cnt[c.home] || 0) + 1;
+      const hq = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0][0];
+      const kind = /海軍|軍|隊/.test(name) ? 'drill' : /SHOP|製|ショップ/i.test(name) ? 'market' : 'meet';
+      return { name, members: ms.map((c) => c.id), hq, kind };
+    });
   }
 
   initChar(c) {
@@ -87,7 +125,11 @@ export class Sim {
       act: { cat: 'daily', label: '起きた', until: this.t + r.range(0, 60), kind: 'idle' },
       bubble: null, kills: 0, downs: 0, travels: 0, log: [],
       trainDay: -1, treasures: 0, raidWins: 0, transit: null, friends: {}, emote: null,
+      bdayParty: -1, contestWins: 0,
     });
+    c.types = splitTypes(c.type);
+    const bd = /(\d+)月(\d+)日/.exec(c.birthday || '');
+    c.bdDoy = bd && +bd[1] >= 1 && +bd[1] <= 12 ? doyOf(+bd[1], +bd[2]) : null;
     c.pts = this.ptRate(c);
     const th = this.m.worlds.get(c.home).theme;
     const hb = new Set();
@@ -105,6 +147,15 @@ export class Sim {
     return (this.hour < 6 ? this.day : this.day + 1) * MIN_PER_DAY + 360;
   }
   nightKey() { return this.hour < 12 ? this.day - 1 : this.day; }
+  doy(day = this.day) { return (((this.calStart + day) % 365) + 365) % 365; }
+  dateOf(day = this.day) {
+    let d = this.doy(day), m = 0;
+    while (d >= MONTH_DAYS[m]) d -= MONTH_DAYS[m++];
+    return { m: m + 1, d: d + 1 };
+  }
+  dateLabel(day = this.day) { const { m, d } = this.dateOf(day); return `${m}月${d}日`; }
+  isBirthday(c) { return c.bdDoy === this.doy(); }
+  birthdaysOn(day = this.day) { return this.bdays.get(this.doy(day)) || []; }
 
   wname(id) { return this.m.worlds.get(id)?.name ?? id; }
   // 世界団移動の日は半減、修行した日は1割増し
@@ -113,8 +164,9 @@ export class Sim {
     const leader = c.partyLeader ? this.m.charById.get(c.partyLeader) : c;
     return [leader, ...leader.party.map((id) => this.m.charById.get(id))];
   }
-  partyPower(c) {
-    return this.partyOf(c).filter((p) => p.state !== 'down' && p.world === c.world).reduce((s, p) => s + this.power(p), 0);
+  // foe を渡すと、メンバーそれぞれのタイプ相性をかけた戦闘力になる
+  partyPower(c, foe = null) {
+    return this.partyOf(c).filter((p) => p.state !== 'down' && p.world === c.world).reduce((s, p) => s + this.power(p) * (foe ? edge(p.types, foe) : 1), 0);
   }
   partyNames(c) {
     const p = this.partyOf(c);
@@ -159,7 +211,7 @@ export class Sim {
 
   // ---------- 日報 ----------
   newDaily() {
-    return { day: this.day, kills: {}, battles: 0, downs: 0, travels: 0, danJumps: [], raidsWon: [], raidsLost: [], raidsFled: [], hordesWon: [], hordesLost: [], racesWon: [], treasures: [], bestFriends: [], camps: 0, duels: 0 };
+    return { day: this.day, kills: {}, battles: 0, downs: 0, travels: 0, danJumps: [], raidsWon: [], raidsLost: [], raidsFled: [], hordesWon: [], hordesLost: [], racesWon: [], treasures: [], bestFriends: [], camps: 0, duels: 0, birthdays: [], contests: [], meets: 0 };
   }
   makeReport(d) {
     const top = Object.entries(d.kills).sort((a, b) => b[1] - a[1]).slice(0, 3)
@@ -173,7 +225,7 @@ export class Sim {
     const p = randomWild(w.geo);
     const boss = chance(0.06);
     const power = Math.round((240 + w.danger * 30) * rand(0.6, 1.4) * (boss ? 2.2 : 1));
-    this.monsters.get(w.id).push({ id: this.nextMonsterId++, x: p.x, z: p.z, tx: p.x, tz: p.z, power, boss, engagedBy: null });
+    this.monsters.get(w.id).push({ id: this.nextMonsterId++, x: p.x, z: p.z, tx: p.x, tz: p.z, power, boss, type: monsterType(w), engagedBy: null });
   }
   updateMonsters(dt) {
     for (const w of this.m.worlds.values()) {
@@ -231,6 +283,11 @@ export class Sim {
       }
       if (c.trip) c.trip.campOk = false;
     }
+    for (const c of this.birthdaysOn()) {
+      this.daily.birthdays.push({ id: c.id, name: c.name, n: 0 });
+      this.log(`🎂 今日（${this.dateLabel()}）は${c.name}の誕生日！`, c.transit ? c.home : c.world, [c.id], true);
+    }
+    this.scheduleFactionEvents();
   }
 
   updateChar(c, dt) {
@@ -312,6 +369,20 @@ export class Sim {
       const o = this.m.charById.get(a.data);
       if (o && o.world === c.world) this.say(o, pick(REPLY), 30);
     }
+    if (a.kind === 'party') {
+      const p = this.parties.find((x) => x.id === a.data);
+      if (p?.hosts.includes(c.id)) { this.say(c, pick(['みんな来てくれてありがとう！', 'えへへ、今日は主役！', 'ケーキ、楽しみ！'])); this.emote(c, '🎂'); }
+      else if (p) { this.say(c, pick(['お誕生日おめでとう！', 'ハッピーバースデー！', 'おめでと〜！', 'プレゼント持ってきたよ！'])); this.emote(c, '🎉'); }
+      return;
+    }
+    if (a.kind === 'meet') {
+      const mt = this.meets.find((x) => x.id === a.data);
+      if (mt && chance(0.5)) this.say(c, pick(MEET_KINDS[mt.kind].lines));
+      if (mt) this.emote(c, MEET_KINDS[mt.kind].icon);
+      return;
+    }
+    if (a.kind === 'contest') { this.say(c, pick(['負けないぞ！', '勝つのはうちだ！', 'いざ勝負！', '本気でいくよ！'])); this.emote(c, '🔥'); return; }
+    if (a.kind === 'watch') { if (chance(0.4)) this.say(c, pick(['がんばれ〜！', 'どっちが勝つかな', 'いけいけ〜！'])); this.emote(c, '👀'); return; }
     if (a.kind === 'sleep') c.state = 'sleep';
     if (a.kind === 'camp') c.state = 'camp';
     if (a.kind === 'fight') this.emote(c, '⚔️');
@@ -339,6 +410,7 @@ export class Sim {
   decide(c) {
     if (this.joinGatheringRaid(c)) return;
     if (this.joinHordeDefense(c)) return;
+    if (this.joinBirthday(c)) return;
     const race = this.raceOf(c);
     if (race && this.hour >= 6 && this.hour < 21) {
       if (c.world === race.world) return this.goDig(c, race);
@@ -368,7 +440,7 @@ export class Sim {
     const meal = this.dueMeal(c);
     if (meal) return this.doMeal(c, meal, home);
 
-    if (c.pts >= 1 && h >= 8 && h < 15 && chance(c.rank >= 9 ? 0.12 : 0.06)) {
+    if (c.pts >= 1 && h >= 8 && h < 15 && !this.isBirthday(c) && chance(c.rank >= 9 ? 0.12 : 0.06)) {
       if (this.startTrip(c)) return;
     }
 
@@ -423,13 +495,23 @@ export class Sim {
     }
     for (const hd of [...this.hordes]) this.updateHorde(hd);
     for (const r of [...this.races]) if (this.t > r.until) this.endRace(r, null);
+    if (h >= 15 && h < 18.5) for (const c of this.birthdaysOn()) if (c.bdayParty !== this.day && this.free(c)) this.startParty(c);
+    for (const p of [...this.parties]) if (this.t >= p.until) this.endParty(p);
+    for (const mt of [...this.meets]) {
+      if (!mt.started && this.t >= mt.start) this.startMeet(mt);
+      else if (mt.started && this.t >= mt.until) this.endMeet(mt);
+    }
+    for (const ct of [...this.contests]) {
+      if (!ct.started && this.t >= ct.start) this.startContest(ct);
+      else if (ct.started && this.t >= ct.until) this.endContest(ct);
+    }
   }
   spawnHorde(w) {
     const size = Math.min(30, Math.round(8 + w.danger * 0.4 + w.residents.length * 0.5));
     const hp = Math.max(3, Math.round(size * 0.22));
-    const hd = { id: this.nextEventId++, world: w.id, angle: Math.random() * Math.PI * 2, size, spawned: 0, killed: 0, broke: 0, hp, maxHp: hp, start: this.t, until: this.t + 150, defenders: [] };
+    const hd = { id: this.nextEventId++, world: w.id, angle: Math.random() * Math.PI * 2, size, spawned: 0, killed: 0, broke: 0, hp, maxHp: hp, start: this.t, until: this.t + 150, defenders: [], type: monsterType(w) };
     this.hordes.push(hd);
-    this.log(`🛡️ 魔物の大群(${size}体)が「${w.name}」の町に押し寄せてきた！ みんなで町を守れ！`, w.id, [], true, { kind: 'horde', horde: hd.id });
+    this.log(`🛡️ ${hd.type[0]}タイプの魔物の大群(${size}体)が「${w.name}」の町に押し寄せてきた！ みんなで町を守れ！`, w.id, [], true, { kind: 'horde', horde: hd.id });
     for (const c of this.m.chars) if (c.world === w.id) this.joinDefense(c, hd);
   }
   joinHordeDefense(c) {
@@ -452,7 +534,7 @@ export class Sim {
       const a = hd.angle + rand(-0.5, 0.5), r = w.geo.R * rand(0.88, 0.97);
       this.monsters.get(w.id).push({
         id: this.nextMonsterId++, x: Math.cos(a) * r, z: Math.sin(a) * r, tx: 0, tz: 0,
-        power: Math.round((240 + w.danger * 30) * 0.6 * rand(0.7, 1.2)), boss: false, horde: hd.id, engagedBy: null,
+        power: Math.round((240 + w.danger * 30) * 0.6 * rand(0.7, 1.2)), boss: false, horde: hd.id, type: hd.type, engagedBy: null,
       });
       hd.spawned++;
     }
@@ -486,7 +568,7 @@ export class Sim {
       c.act.fightUntil = 0;
       c.act.target = null;
       c.act.label = '町を守っている';
-      if (this.partyPower(c) * rand(0.8, 1.2) >= mo.power * rand(0.8, 1.2)) {
+      if (this.partyPower(c, mo.type) * rand(0.8, 1.2) >= mo.power * rand(0.8, 1.2)) {
         mo.dead = true;
         c.kills++;
         hd.killed++;
@@ -626,6 +708,183 @@ export class Sim {
     this.log(`💰 ${winner.name}が「${w.name}」で伝説の宝「${r.item}」を掘り当てた！（${r.racers.length}人の争奪戦）`, r.world, [winner.id, ...r.racers.filter((id) => id !== winner.id)], true, { kind: 'race-end' });
   }
 
+  // ---------- 誕生日パーティー ----------
+  free(c) { return c.state === 'ok' && !c.transit && !c.partyLeader && !BUSY.includes(c.act.kind); }
+  partyAt(worldId) { return this.parties.find((p) => p.world === worldId); }
+  inviteChance(host, o) {
+    const rel = host.friends[o.id] || 0;
+    if (rel >= BEST) return 0.95;
+    if (rel >= FRIEND) return 0.8;
+    if (o.seiryoku && o.seiryoku === host.seiryoku) return 0.6;
+    if (o.zoku && o.zoku === host.zoku) return 0.5;
+    return o.home === host.home ? 0.3 : 0.15;
+  }
+  startParty(host) {
+    const w = this.m.worlds.get(host.world);
+    if (this.hordeAt(w.id) || this.raidAt(w.id)) return;
+    host.bdayParty = this.day;
+    // 同じ日に同じ世界線で誕生日の人がいたら合同パーティーにする
+    const cur = this.partyAt(w.id);
+    if (cur) {
+      if (this.t > cur.until - 30) return;
+      cur.hosts.push(host.id);
+      cur.guests = cur.guests.filter((id) => id !== host.id);
+      this.setAct(host, 'event', '誕生日パーティーの主役', cur.until - this.t, { x: cur.x + 1.2, z: cur.z }, 'party', cur.id, 'パーティー会場へ向かっている');
+      this.log(`🎂 ${host.name}も今日が誕生日！ 合同パーティーになった`, w.id, cur.hosts, true);
+      return;
+    }
+    const atHome = host.world === host.home;
+    const h = atHome ? w.geo.homes[host.id] : randomTown(w.geo);
+    const p = { id: this.nextEventId++, world: w.id, hosts: [host.id], x: h.x, z: h.z + (atHome ? 3 : 0), start: this.t, until: this.t + 110, asked: [host.id], guests: [] };
+    this.parties.push(p);
+    this.setAct(host, 'event', '誕生日パーティーの主役', p.until - this.t, { x: p.x, z: p.z }, 'party', p.id, 'パーティー会場へ向かっている');
+    // 仲のいい順に声をかける
+    const cands = this.m.chars.filter((o) => o.world === w.id && o !== host && this.free(o));
+    cands.sort((a, b) => (host.friends[b.id] || 0) - (host.friends[a.id] || 0));
+    for (const o of cands) {
+      p.asked.push(o.id);
+      if (p.guests.length < 14 && chance(this.inviteChance(host, o))) this.joinParty(o, p);
+    }
+    // 隣の世界線にいる友達も、移動ptがあれば駆けつける
+    const far = [];
+    for (const o of this.m.chars) {
+      if (far.length >= 3 || o.world === w.id || !w.neighbors.includes(o.world) || (host.friends[o.id] || 0) < FRIEND) continue;
+      if (!this.free(o) || o.trip || o.party.length || !this.canHop(o, w.id) || !chance(0.6)) continue;
+      o.trip = { mode: 'trip', hops: 1, hopsDone: 0, acts: 0, goingHome: false, campOk: false, visited: [o.world], bdayTarget: p.id };
+      p.asked.push(o.id);
+      far.push(o);
+      this.say(o, `${host.name}の誕生日だ！`);
+      this.goPortal(o, w.id);
+    }
+    const extra = far.length ? `（${far.map((o) => o.name).join('、')}も隣の世界線から向かっている）` : '';
+    this.log(`🎂 ${host.name}の誕生日パーティーが始まった！ ${p.guests.length}人がお祝いに駆けつけた${extra}`, w.id, [host.id, ...p.guests], true, { kind: 'party', party: p.id });
+  }
+  joinParty(o, p) {
+    if (p.guests.includes(o.id) || p.hosts.includes(o.id)) return;
+    p.guests.push(o.id);
+    const i = p.guests.length, a = i * 0.9, d = 3 + (i % 3) * 1.4;
+    const host = this.m.charById.get(p.hosts[0]);
+    this.setAct(o, 'event', `${host.name}の誕生日パーティー`, Math.max(10, p.until - this.t - 5), { x: p.x + Math.cos(a) * d, z: p.z + Math.sin(a) * d }, 'party', p.id, `${host.name}の誕生日パーティーに向かっている`);
+  }
+  joinBirthday(c) {
+    const p = this.partyAt(c.world);
+    if (!p || p.asked.includes(c.id) || this.t > p.until - 20) return false;
+    p.asked.push(c.id);
+    if (!chance(this.inviteChance(this.m.charById.get(p.hosts[0]), c) * 0.7)) return false;
+    this.joinParty(c, p);
+    return true;
+  }
+  endParty(p) {
+    this.parties = this.parties.filter((x) => x !== p);
+    const at = (id) => { const o = this.m.charById.get(id); return o.world === p.world && o.act.kind === 'party' && o.act.data === p.id ? o : null; };
+    const hosts = p.hosts.map((id) => this.m.charById.get(id));
+    const guests = p.guests.map(at).filter(Boolean);
+    for (const o of [...p.hosts.map(at).filter(Boolean), ...guests]) { o.act.kind = 'idle'; o.act.until = this.t; o.walking = false; }
+    for (const h of hosts) for (const g of guests) this.addFriend(h, g, 4);
+    for (let i = 0; i < guests.length; i++) for (let j = i + 1; j < guests.length; j++) this.addFriend(guests[i], guests[j], 1);
+    const names = hosts.map((h) => h.name).join('と');
+    for (const h of hosts) {
+      const d = this.daily?.birthdays.find((x) => x.id === h.id);
+      if (d) d.n = guests.length;
+      if (h.world === p.world) { this.say(h, guests.length ? '最高の誕生日だった！' : 'ひとりでも、ケーキはおいしい…', 40); this.emote(h, guests.length ? '🥰' : '🍰'); }
+    }
+    if (!guests.length) return this.log(`🍰 ${names}はひとりでケーキを食べて誕生日を祝った`, p.world, p.hosts, false);
+    const gifts = [...new Set(guests.map(() => pick(GIFTS)))].slice(0, 3);
+    for (const g of guests) if (chance(0.3)) this.say(g, pick(['楽しかった〜！', 'またね！', 'ケーキおいしかった！']));
+    this.log(`🎉 ${names}の誕生日パーティーはおひらき。${guests.length}人にお祝いしてもらい、${gifts.join('・')}などのプレゼントをもらった`, p.world, [...p.hosts, ...guests.map((g) => g.id)], true);
+  }
+
+  // ---------- 勢力の催し (集会・合同訓練・商談会 / 対抗戦) ----------
+  scheduleFactionEvents() {
+    const day0 = this.day * MIN_PER_DAY;
+    for (const f of this.factions) {
+      if (!chance(0.2) || this.meets.some((m) => m.faction === f.name)) continue;
+      this.meets.push({ id: this.nextEventId++, faction: f.name, kind: f.kind, world: f.hq, start: day0 + rand(9.5, 15) * 60, dur: rand(60, 100), started: false });
+    }
+    if (this.contests.length || !chance(0.5)) return;
+    const byWorld = {};
+    for (const f of this.factions) (byWorld[f.hq] ||= []).push(f);
+    const ws = Object.entries(byWorld).filter(([, fs]) => fs.length >= 2);
+    const pickW = weighted(ws.map(([w, fs]) => [w, fs.length]));
+    if (!pickW) return;
+    const fs = [...byWorld[pickW]].sort(() => Math.random() - 0.5);
+    this.contests.push({ id: this.nextEventId++, world: pickW, a: fs[0].name, b: fs[1].name, game: pick(CONTESTS).name, start: day0 + rand(13, 16) * 60, started: false });
+  }
+  factionMembers(name, world, max = Infinity) {
+    const f = this.factions.find((x) => x.name === name);
+    return f.members.map((id) => this.m.charById.get(id)).filter((c) => c.world === world && this.free(c))
+      .sort((a, b) => b.rank - a.rank).slice(0, max);
+  }
+  eventSpot(w) { return w.geo.spots.length && chance(0.6) ? pick(w.geo.spots) : randomTown(w.geo); }
+  startMeet(mt) {
+    const w = this.m.worlds.get(mt.world);
+    const ms = this.hordeAt(w.id) || this.raidAt(w.id) ? [] : this.factionMembers(mt.faction, w.id);
+    if (ms.length < 2) { this.meets = this.meets.filter((x) => x !== mt); return; }
+    const K = MEET_KINDS[mt.kind];
+    const sp = this.eventSpot(w);
+    Object.assign(mt, { started: true, until: this.t + mt.dur, x: sp.x, z: sp.z, members: ms.map((c) => c.id) });
+    ms.forEach((c, i) => {
+      const a = (i / ms.length) * Math.PI * 2, d = 2.5 + (i % 2) * 1.6;
+      const dest = mt.kind === 'drill' ? { x: sp.x + ((i % 5) - 2) * 1.8, z: sp.z + Math.floor(i / 5) * 1.8 } : { x: sp.x + Math.cos(a) * d, z: sp.z + Math.sin(a) * d };
+      this.setAct(c, K.cat, `「${mt.faction}」の${K.label}`, mt.dur, dest, 'meet', mt.id, `「${mt.faction}」の${K.label}に向かっている`);
+    });
+    this.say(ms[0], pick(K.lines));
+    this.log(`${K.icon} 「${mt.faction}」の${K.label}が「${w.name}」で開かれた（${ms.length}人参加）`, w.id, mt.members, true, { kind: 'meet', meet: mt.id });
+  }
+  endMeet(mt) {
+    this.meets = this.meets.filter((x) => x !== mt);
+    const ms = mt.members.map((id) => this.m.charById.get(id)).filter((c) => c.world === mt.world && c.act.kind === 'meet' && c.act.data === mt.id);
+    for (const c of ms) {
+      c.act.kind = 'idle'; c.act.until = this.t; c.walking = false;
+      if (mt.kind === 'drill') { c.trainDay = this.day; this.emote(c, '🔥'); }
+    }
+    for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) this.addFriend(ms[i], ms[j], 2);
+    if (this.daily) this.daily.meets++;
+    const K = MEET_KINDS[mt.kind];
+    this.log(`「${mt.faction}」の${K.label}が終わった${mt.kind === 'drill' ? '（参加者は今日1日、戦闘力1割増し）' : ''}`, mt.world, ms.map((c) => c.id), false);
+  }
+  startContest(ct) {
+    const w = this.m.worlds.get(ct.world);
+    const busy = this.hordeAt(w.id) || this.raidAt(w.id);
+    const A = busy ? [] : this.factionMembers(ct.a, w.id, 5), B = busy ? [] : this.factionMembers(ct.b, w.id, 5);
+    if (A.length < 2 || B.length < 2) { this.contests = this.contests.filter((x) => x !== ct); return; }
+    const sp = this.eventSpot(w);
+    Object.assign(ct, { started: true, until: this.t + 60, x: sp.x, z: sp.z, teamA: A.map((c) => c.id), teamB: B.map((c) => c.id), watchers: [] });
+    const lbl = `勢力対抗「${ct.game}」に出場`;
+    A.forEach((c, i) => this.setAct(c, 'event', lbl, 60, { x: sp.x - 4.5, z: sp.z + (i - 2) * 1.8 }, 'contest', ct.id, '対抗戦の会場へ向かっている'));
+    B.forEach((c, i) => this.setAct(c, 'event', lbl, 60, { x: sp.x + 4.5, z: sp.z + (i - 2) * 1.8 }, 'contest', ct.id, '対抗戦の会場へ向かっている'));
+    // 見物人も集まってくる
+    for (const o of this.m.chars) {
+      if (ct.watchers.length >= 10 || o.world !== w.id || !this.free(o) || !chance(0.25)) continue;
+      const a = Math.random() * Math.PI * 2;
+      ct.watchers.push(o.id);
+      this.setAct(o, 'event', `勢力対抗「${ct.game}」を観戦`, 60, { x: sp.x + Math.cos(a) * 9, z: sp.z + Math.sin(a) * 9 }, 'watch', ct.id, '対抗戦を見に行っている');
+    }
+    this.log(`🚩 勢力対抗「${ct.game}」！「${ct.a}」vs「${ct.b}」が「${w.name}」で始まる`, w.id, [...ct.teamA, ...ct.teamB], true, { kind: 'contest', contest: ct.id });
+  }
+  endContest(ct) {
+    this.contests = this.contests.filter((x) => x !== ct);
+    const at = (id) => { const c = this.m.charById.get(id); return c.world === ct.world && ['contest', 'watch'].includes(c.act.kind) && c.act.data === ct.id ? c : null; };
+    const A = ct.teamA.map(at).filter(Boolean), B = ct.teamB.map(at).filter(Boolean), W = ct.watchers.map(at).filter(Boolean);
+    for (const c of [...A, ...B, ...W]) { c.act.kind = 'idle'; c.act.until = this.t; c.walking = false; }
+    if (!A.length && !B.length) return;
+    const g = CONTESTS.find((x) => x.name === ct.game);
+    const score = (team) => {
+      if (!team.length) return -1;
+      const each = team.map((c) => (g.stat ? g.stat.reduce((s, i) => s + c.stats[i], 0) / g.stat.length : 100) * (1 + 0.05 * c.rank) * rand(0.6, 1.4));
+      return (each.reduce((s, v) => s + v, 0) / team.length) * (1 + 0.06 * team.length);
+    };
+    const aWin = score(A) >= score(B);
+    const [win, lose, wn, ln] = aWin ? [A, B, ct.a, ct.b] : [B, A, ct.b, ct.a];
+    for (const c of win) { c.contestWins++; this.emote(c, '🎉'); this.say(c, pick(['やったー！', '勝った〜！', 'これが実力だ！'])); }
+    for (const c of lose) { this.emote(c, '😭'); this.say(c, pick(['くやしい！', '次は負けない！', 'いい勝負だった…'])); }
+    for (const c of W) this.emote(c, '👏');
+    for (const team of [win, lose]) for (let i = 0; i < team.length; i++) for (let j = i + 1; j < team.length; j++) this.addFriend(team[i], team[j], 2);
+    for (const a of win) for (const b of lose) this.addFriend(a, b, 1);
+    this.daily?.contests.push({ game: ct.game, win: wn, lose: ln, world: ct.world });
+    this.log(`🏅 勢力対抗「${ct.game}」は「${wn}」の勝利！「${ln}」を下した`, ct.world, [...win, ...lose].map((c) => c.id), true);
+  }
+
   // ---------- 追加の行動 ----------
   doVisit(c, geo) {
     const others = this.m.worlds.get(c.world).residents.filter((id) => id !== c.id);
@@ -714,16 +973,17 @@ export class Sim {
   }
   spawnRaid(w) {
     const a = Math.random() * Math.PI * 2, rr = w.geo.R * rand(0.45, 0.6);
+    const [title, type] = pick(RAID_TITLE);
     const r = {
       id: this.nextRaidId++, world: w.id, x: Math.cos(a) * rr, z: Math.sin(a) * rr,
-      name: `${[...w.name][0]}獄の${pick(RAID_TITLE)}`,
+      name: `${[...w.name][0]}獄の${title}`, type: [type],
       // 一人では勝てないが、5人前後集まれば勝ち目がある強さ
       power: Math.round((240 + w.danger * 30) * 4.5 * rand(0.9, 1.2)),
       phase: 'gather', until: this.t + 90, participants: [], helpers: [],
     };
     this.raids.push(r);
     this.effects.push({ t: this.t, world: w.id, x: r.x, z: r.z, kind: 'dan' });
-    this.log(`🐉 レイドボス「${r.name}」(戦闘力${r.power})が「${w.name}」に出現！ 一人では勝てない…みんなを呼べ！`, w.id, [], true, { kind: 'raid', raid: r.id });
+    this.log(`🐉 レイドボス「${r.name}」(${type}タイプ・戦闘力${r.power})が「${w.name}」に出現！ 一人では勝てない…みんなを呼べ！`, w.id, [], true, { kind: 'raid', raid: r.id });
     for (const c of this.m.chars) if (c.world === w.id) this.joinRaid(c, r);
     // 隣の世界線にいるランク9以上へ救援要請
     let called = 0;
@@ -767,7 +1027,7 @@ export class Sim {
     return r.participants.map((id) => this.m.charById.get(id))
       .filter((c) => c.world === r.world && c.state === 'ok' && c.act.kind === 'raid' && c.act.data === r.id && !c.walking);
   }
-  raidPower(r) { return this.raidFighters(r).reduce((s, c) => s + this.partyPower(c), 0); }
+  raidPower(r) { return this.raidFighters(r).reduce((s, c) => s + this.partyPower(c, r.type), 0); }
   resolveRaid(r) {
     const fighters = this.raidFighters(r);
     const ids = fighters.flatMap((c) => this.partyOf(c).filter((p) => p.world === r.world).map((p) => p.id));
@@ -856,10 +1116,9 @@ export class Sim {
   tryBattle(c) {
     const list = this.monsters.get(c.world).filter((m) => !m.engagedBy);
     if (!list.length) return false;
-    const pw = this.partyPower(c);
     list.sort((a, b) => dist2(c.x, c.z, a.x, a.z) - dist2(c.x, c.z, b.x, b.z));
-    // 勝てそうな相手を選ぶ。どうしてもいなければ、たまに格上へ挑む
-    const mo = list.find((m) => m.power < pw) || (chance(0.1) ? list[0] : null);
+    // タイプ相性も考えて勝てそうな相手を選ぶ。どうしてもいなければ、たまに格上へ挑む
+    const mo = list.find((m) => m.power < this.partyPower(c, m.type)) || (chance(0.1) ? list[0] : null);
     if (!mo) return false;
     mo.engagedBy = c.id;
     this.setAct(c, 'battle', '魔物退治', 0, { x: mo.x + 1.2, z: mo.z }, 'battle', mo.id, mo.boss ? '大魔物に向かっている' : '魔物退治に向かっている');
@@ -870,8 +1129,10 @@ export class Sim {
     const i = list.findIndex((m) => m.id === monsterId);
     if (i < 0) return;
     const mo = list[i];
-    const pw = this.partyPower(c);
+    const pw = this.partyPower(c, mo.type);
     const me = pw * rand(0.75, 1.25), them = mo.power * rand(0.75, 1.25);
+    const note = edgeNote(edge(c.types, mo.type));
+    const mname = `${mo.type?.[0] ? mo.type[0] + 'タイプの' : ''}${mo.boss ? '大魔物' : '魔物'}`;
     const who = this.partyNames(c);
     const ids = this.partyOf(c).map((p) => p.id);
     const wn = this.wname(c.world);
@@ -882,12 +1143,12 @@ export class Sim {
       this.say(c, mo.boss ? 'やったー！大物だ！' : 'よし！');
       this.emote(c, mo.boss ? '🎉' : '💪');
       const notable = mo.boss || mo.power > pw * 0.95;
-      this.log(`⚔️ ${who}が${wn}で${mo.boss ? '大魔物' : '魔物'}(戦闘力${mo.power})を退治した`, c.world, ids, notable);
+      this.log(`⚔️ ${who}が${wn}で${mname}(戦闘力${mo.power})を退治した${note}`, c.world, ids, notable);
     } else {
       mo.engagedBy = null;
       for (const p of this.partyOf(c)) if (p.world === c.world) { this.knockDown(p); this.emote(p, '💫'); }
       if (this.daily) this.daily.downs += ids.length;
-      this.log(`💫 ${who}が${wn}の${mo.boss ? '大魔物' : '魔物'}(戦闘力${mo.power})に敗れ、朝まで倒れている`, c.world, ids, true);
+      this.log(`💫 ${who}が${wn}の${mname}(戦闘力${mo.power})に敗れ、朝まで倒れている${note}`, c.world, ids, true);
     }
   }
   knockDown(p) {
@@ -983,6 +1244,12 @@ export class Sim {
       const r = this.raids.find((x) => x.id === tr.raidTarget);
       if (r && r.world !== c.world && this.canHop(c, r.world)) return this.goPortal(c, r.world);
       delete tr.raidTarget;
+    }
+    if (tr.bdayTarget) {
+      const p = this.parties.find((x) => x.id === tr.bdayTarget);
+      if (p && p.world === c.world) { delete tr.bdayTarget; if (this.t < p.until - 10) return this.joinParty(c, p); }
+      else if (p && this.canHop(c, p.world)) return this.goPortal(c, p.world);
+      else delete tr.bdayTarget;
     }
     if (tr.raceTarget) {
       const r = this.races.find((x) => x.id === tr.raceTarget);
@@ -1236,10 +1503,11 @@ export class Sim {
 
   // ---------- 保存 ----------
   serialize() {
-    const keys = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends'];
+    const keys = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins'];
     return {
       v: 1, t: this.t, lastMorning: this.lastMorning, nextMonsterId: this.nextMonsterId,
-      raids: this.raids, nextRaidId: this.nextRaidId, hordes: this.hordes, races: this.races, repair: this.repair, nextEventId: this.nextEventId, daily: this.daily, report: this.report,
+      raids: this.raids, nextRaidId: this.nextRaidId, hordes: this.hordes, races: this.races, repair: this.repair, nextEventId: this.nextEventId,
+      parties: this.parties, meets: this.meets, contests: this.contests, calStart: this.calStart, daily: this.daily, report: this.report,
       monsters: Object.fromEntries(this.monsters),
       events: this.events.slice(-200),
       chars: this.m.chars.map((c) => [c.id, Object.fromEntries(keys.map((k) => [k, c[k] === Infinity ? 'INF' : c[k]]))]),
@@ -1262,7 +1530,14 @@ export class Sim {
     this.nextRaidId = s.nextRaidId || 1;
     this.daily = s.daily || this.newDaily();
     this.daily.raidsFled ??= [];
-    for (const k of ['hordesWon', 'hordesLost', 'racesWon']) this.daily[k] ??= [];
+    for (const k of ['hordesWon', 'hordesLost', 'racesWon', 'birthdays', 'contests']) this.daily[k] ??= [];
+    this.daily.meets ??= 0;
+    this.parties = (s.parties || []).filter((p) => this.m.worlds.has(p.world));
+    this.meets = (s.meets || []).filter((p) => this.m.worlds.has(p.world));
+    this.contests = (s.contests || []).filter((p) => this.m.worlds.has(p.world));
+    // 古い保存データ: 今日の日付が「いまの日」になるようにカレンダーを合わせる
+    this.calStart = s.calStart ?? (((todayDoy() - Math.floor(s.t / MIN_PER_DAY)) % 365) + 365) % 365;
+    for (const [wid, list] of this.monsters) for (const mo of list) mo.type ??= monsterType(this.m.worlds.get(wid));
     this.hordes = (s.hordes || []).filter((h) => this.m.worlds.has(h.world));
     this.races = (s.races || []).filter((r) => this.m.worlds.has(r.world));
     this.repair = s.repair || {};
@@ -1275,6 +1550,7 @@ export class Sim {
       if (c.act && c.act.until === null) c.act.until = Infinity;
       if (typeof c.pts !== 'number') c.pts = this.ptRate(c);
       delete c.movesLeft; delete c.lastDan;
+      c.bdayParty ??= -1; c.contestWins ??= 0;
       c.trainDay ??= -1; c.treasures ??= 0; c.raidWins ??= 0; c.transit ??= null; c.friends ??= {};
       c.log = this.events.filter((e) => e.ids.includes(c.id)).slice(-30);
     }
