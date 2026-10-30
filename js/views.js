@@ -2,8 +2,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=29';
-import { TYPE_COLOR } from './types.js?v=29';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=30';
+import { TYPE_COLOR } from './types.js?v=30';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -12,8 +12,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=29';
-import { CATS } from './sim.js?v=29';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=30';
+import { CATS } from './sim.js?v=30';
 
 // グラフィック設定 (低・中・高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -172,9 +172,9 @@ class BaseView {
       const pts = [];
       for (let i = 0; i <= 20; i++) pts.push(posOf(tr, (f * i) / 20, stage));
       tk.trail.geometry.setFromPoints(pts);
-      // 引いて見ていても豆粒にならないよう、画面上の大きさに下限を設ける
+      // 宇宙では世界線や世界団に比べて小さく映す。引いた時に見失わないよう、ごく小さな下限だけ設ける
       const camD = this.camera.position.distanceTo(tk.g.position);
-      const H = Math.max(size, camD * 0.045) * (c.id === this.app.selected ? 1.4 : 1);
+      const H = Math.max(size, camD * 0.008) * (c.id === this.app.selected ? 1.4 : 1);
       tk.sp.scale.set(H * (tk.tex.ready && c.img ? tk.tex.aspect : 1), H, 1);
       tk.glowSp.scale.setScalar(H * 2.2);
       tk.lb.position.y = H * 0.75;
@@ -333,7 +333,7 @@ export class UniverseView extends BaseView {
       const dir = b.clone().sub(a).normalize();
       a.addScaledVector(dir, A.r * 1.3); b.addScaledVector(dir, -B.r * 1.3);
       return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * a.distanceTo(b) * 0.08, 0));
-    }, 8);
+    }, 2);
     if (this.app.following || this.app.director.on) this.controls.autoRotate = false;
     if (this.followTraveler(dt)) return;
     super.update(dt);
@@ -475,7 +475,7 @@ export class ClusterView extends BaseView {
       a.copy(A.g.position); b.copy(edgeToward(tr.toDan ?? model.worlds.get(tr.to).dan));
       const k = stage === 'up' ? 0 : f;
       return a.clone().lerp(b, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * 20, 0));
-    }, 4.5);
+    }, 1);
     if (this.followTraveler(dt)) return;
     if (this.ultra) this.updateMiniChars();
     // 宇宙から観戦: 映したいキャラ・場所を、透けた世界線の中に追いかける

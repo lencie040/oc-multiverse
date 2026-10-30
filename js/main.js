@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=29';
-import { Sim } from './sim.js?v=29';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=29';
-import { UI } from './ui.js?v=29';
-import { Director } from './director.js?v=29';
-import { Sound, moodOf } from './audio.js?v=29';
-import { MIN_PER_DAY, nowGameT } from './util.js?v=29';
-import { Sync } from './sync.js?v=29';
+import { buildModel } from './model.js?v=30';
+import { Sim } from './sim.js?v=30';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=30';
+import { UI } from './ui.js?v=30';
+import { Director } from './director.js?v=30';
+import { Sound, moodOf } from './audio.js?v=30';
+import { MIN_PER_DAY, nowGameT } from './util.js?v=30';
+import { Sync } from './sync.js?v=30';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -17,7 +17,7 @@ const PIXEL_RATIO = { low: 0.75, mid: 1, high: 2, ultra: 2 };
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=29').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=30').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
