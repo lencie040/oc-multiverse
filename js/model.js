@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=22';
-import { themeOf } from './themes.js?v=22';
+import { seeded, hashStr } from './util.js?v=23';
+import { themeOf } from './themes.js?v=23';
 
 export const LEVEL = 50;
 export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限
@@ -168,6 +168,33 @@ export function randomTown(geo) {
   const a = Math.random() * Math.PI * 2;
   const r = Math.sqrt(Math.random()) * geo.townR;
   return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+}
+
+// 世界線の移動pt: 汎異記号の1文字目が同じなら1pt、違えば5pt
+export function hopCost(worlds, a, b) {
+  return worlds.get(a).letter === worlds.get(b).letter ? 1 : 5;
+}
+
+// いちばん安く行ける経路 (ダイクストラ法)。行けなければ null
+export function cheapestPath(worlds, from, to) {
+  if (from === to) return { path: [from], cost: 0 };
+  const best = new Map([[from, 0]]);
+  const prev = new Map();
+  const open = [[0, from]];
+  while (open.length) {
+    open.sort((a, b) => a[0] - b[0]);
+    const [d, cur] = open.shift();
+    if (d > best.get(cur)) continue;
+    if (cur === to) break;
+    for (const nb of worlds.get(cur).neighbors) {
+      const nd = d + hopCost(worlds, cur, nb);
+      if (nd < (best.get(nb) ?? Infinity)) { best.set(nb, nd); prev.set(nb, cur); open.push([nd, nb]); }
+    }
+  }
+  if (!best.has(to)) return null;
+  const path = [to];
+  while (path[0] !== from) path.unshift(prev.get(path[0]));
+  return { path, cost: best.get(to) };
 }
 
 // 世界団内の最短経路 (BFS)

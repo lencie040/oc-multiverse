@@ -1,7 +1,7 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=22';
-import { prioOf } from './director.js?v=22';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=22';
+import { CATS } from './sim.js?v=23';
+import { prioOf } from './director.js?v=23';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=23';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -353,7 +353,7 @@ export class UI {
       }).join('')}</div>`
       + this.rankings()
       + `<h3>旅をしているキャラ</h3><div class="list">${model.chars.filter((c) => c.trip && !c.partyLeader).map((c) => this.charRow(c, this.whereChip(c))).join('') || '<div class="sub">今はいません</div>'}</div>`
-      + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。ランク9以上は1日3回まで隣の世界線へ移動でき、ランク10以上は余裕のあるランク分だけ同じ汎異記号の仲間を連れていけます。ランク11以上は3日に1回だけ世界団を越えられます（その日は力が半減）。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。</div>`;
+      + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。世界線の移動には移動ptを使います（汎異記号の1文字目が同じ世界線へは1pt、違う世界線へは5pt、世界団の移動は40pt。仲間を連れていくと人数分）。ptはランク7で2日に1pt、ランク8で1日3pt、9で7pt、10で15pt、11で40ptたまり、3日分までためられます。世界団を越えられるのはランク11以上で、その日は力が半減します。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。</div>`;
   }
 
   danInfo(d) {
@@ -413,8 +413,10 @@ export class UI {
     const pw = Math.round(sim.power(c));
     const maxStat = 200;
     const party = c.partyLeader ? [model.charById.get(c.partyLeader)] : c.party.map((id) => model.charById.get(id));
-    const danNext = c.rank >= 11 ? (sim.canDan(c) ? '可能' : `あと${3 - (sim.day - c.lastDan)}日`) : '不可（ランク11未満）';
-    const moves = c.rank >= 9 ? `残り ${c.movesLeft} / 3 回` : party.length && c.partyLeader ? 'リーダーと同行中' : '不可（ランク9未満）';
+    const rate = sim.ptRate(c);
+    const danNext = c.rank >= 11 ? (sim.canDan(c) ? `可能（${40 * sim.partySize(c)}pt）` : `ptが足りない（${40 * sim.partySize(c)}pt必要）`) : '不可（ランク11未満）';
+    const moves = rate ? `${sim.fmtPt(c.pts)}pt ／ 上限${sim.fmtPt(sim.ptCap(c))}pt（1日+${sim.fmtPt(rate)}pt）`
+      : c.partyLeader ? 'リーダーと同行中' : 'ptがたまらない（ランク7未満）';
     return `<button class="close" data-act="close" title="閉じる (Esc)">×</button>`
       + `<div class="avatar">${avatar}</div>`
       + `<h2>${escapeHtml(c.name)}</h2><div class="sub">${escapeHtml(c.yomi)} ・ No.${escapeHtml(c.id)}</div>`
@@ -425,7 +427,7 @@ export class UI {
       + `<span>所属世界線</span><span>${this.wchip(c.home, true)} ${escapeHtml(c.hani)}</span><span>世界団</span><span>${escapeHtml(home.dan)}</span>`
       + `<span>ランク</span><span>${c.rank}</span><span>レベル</span><span>50</span>`
       + `<span>戦闘力</span><span>${pw}${c.halvedDay === sim.day ? '（世界団移動で半減中）' : ''}${c.trainDay === sim.day ? '（修行で1割増し）' : ''}</span>`
-      + `<span>世界線移動</span><span>${moves}</span><span>世界団移動</span><span>${danNext}</span>`
+      + `<span>移動pt</span><span>${moves}</span><span>世界団移動</span><span>${danNext}</span>`
       + (party.length ? `<span>${c.partyLeader ? 'リーダー' : '仲間'}</span><span>${party.map((p) => escapeHtml(p.name)).join('、')}</span>` : '')
       + (c.type ? `<span>タイプ</span><span>${escapeHtml(c.type)}</span>` : '')
       + (c.zoku ? `<span>族</span><span>${escapeHtml(c.zoku)}</span>` : '')
