@@ -1,6 +1,6 @@
 // ローポリの構造物・自然物
 import * as THREE from 'three';
-import { FONT } from './util.js?v=21';
+import { FONT } from './util.js?v=22';
 
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -811,6 +811,23 @@ export function buildRaidBoss() {
   g.add(aura);
   g.scale.setScalar(3.2);
   g.userData = { body, aura };
+  return g;
+}
+
+// 宝の眠る場所の目印 (地面の赤いバツ印 + スコップ)
+export function buildTreasureMark() {
+  const g = new THREE.Group();
+  for (const r of [Math.PI / 4, -Math.PI / 4]) {
+    const b = mesh(G.box, glow('#ff3a3a', 0.6), 0, 0.12, 0, 5, 0.2, 0.9);
+    b.rotation.y = r;
+    g.add(b);
+  }
+  const sh = new THREE.Group();
+  sh.add(mesh(G.cyl6, mat('#8a5a33'), 0, 1.4, 0, 0.12, 2.4, 0.12));
+  sh.add(mesh(G.box, mat('#b8c0c8', { metalness: 0.6 }), 0, 0.2, 0, 0.7, 0.8, 0.1));
+  sh.position.set(2.4, 0, 1.2);
+  sh.rotation.z = 0.35;
+  g.add(sh);
   return g;
 }
 

@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, mat } from './props.js?v=21';
-import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=21';
-import { CATS } from './sim.js?v=21';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, mat } from './props.js?v=22';
+import { colorOf, luminance, FONT, clamp, escapeHtml, MIN_PER_DAY } from './util.js?v=22';
+import { CATS } from './sim.js?v=22';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -397,7 +397,10 @@ export class ClusterView extends BaseView {
       const visitors = present.filter((c) => c.home !== wid).length;
       const mons = sim.monsters.get(wid).length;
       const raid = sim.raidAt(wid);
+      const hd = sim.hordeAt(wid), race = sim.races.find((r) => r.world === wid);
       const html = (raid ? `<em class="raid">🐉 レイド${raid.phase === 'fight' ? '激闘中' : '発生中'}</em>` : '')
+        + (hd ? `<em class="raid">🛡️ 防衛戦</em>` : '')
+        + (race ? `<em class="raid race">🗺️ 宝探し</em>` : '')
         + (show ? `<b>${escapeHtml(n.w.name)}</b><small>${escapeHtml(wid)}</small>` : '')
         + `<span>👤${present.length}${visitors ? ` 🧳${visitors}` : ''}${mons ? ` 👾${mons}` : ''}</span>`;
       if (html !== n.last) { n.lb.inner.innerHTML = html; n.last = html; }
@@ -625,6 +628,7 @@ export class WorldView extends BaseView {
     this.floats = [];
     this.monObjs = new Map();
     this.raidObjs = new Map();
+    this.eventObjs = new Map();
     this.tents = new Map();
     this.fx = [];
     this.fxSeen = new Set();
@@ -806,7 +810,8 @@ export class WorldView extends BaseView {
         if (camD < 140) this.floatText(o, c.emote.e, H + 1.4, 'emote');
       }
       const raidFight = c.act.kind === 'raid' && !c.walking && sim.raids.some((r) => r.id === c.act.data && r.phase === 'fight');
-      if ((c.act.kind === 'fight' || raidFight) && camD < 140 && (u.hitT -= dt) < 0) {
+      const fighting = c.act.kind === 'fight' || raidFight || (c.act.kind === 'defend' && c.act.fightUntil);
+      if (fighting && camD < 140 && (u.hitT -= dt) < 0) {
         u.hitT = 0.45 + Math.random() * 0.5;
         this.floatText(o, `💥${Math.round(30 + Math.random() * (raidFight ? 900 : 300))}`, H * 0.8, 'hit');
       }
@@ -848,7 +853,7 @@ export class WorldView extends BaseView {
       if (!o) {
         o = buildMonster(m.boss);
         o.position.set(m.x, 0, m.z);
-        const lb = label(`${m.boss ? '大魔物' : '魔物'} ${m.power}`, 'mon-label');
+        const lb = label(`${m.horde ? '大群' : m.boss ? '大魔物' : '魔物'} ${m.power}`, 'mon-label');
         lb.position.y = m.boss ? 2.4 : 2.8;
         o.add(lb);
         o.userData.lb = lb;
@@ -898,6 +903,47 @@ export class WorldView extends BaseView {
       if (html !== u.last) { u.lb.inner.innerHTML = html; u.last = html; }
     }
     for (const id of [...this.raidObjs.keys()]) if (!raids.has(id)) this.removeObj(this.raidObjs, id);
+
+    // 防衛戦の状況表示と、宝の眠る場所の目印
+    const evs = new Set();
+    const hd = sim.hordeAt(this.worldId);
+    if (hd) {
+      const key = 'h' + hd.id;
+      evs.add(key);
+      let o = this.eventObjs.get(key);
+      if (!o) {
+        o = new THREE.Group();
+        const lb = label('', 'raid-label horde-label');
+        lb.position.y = 16;
+        o.add(lb);
+        o.userData = { lb, last: '' };
+        this.scene.add(o);
+        this.eventObjs.set(key, o);
+      }
+      const hearts = '❤️'.repeat(Math.max(0, hd.hp)) + '🖤'.repeat(Math.max(0, hd.maxHp - hd.hp));
+      const html = `<b>🛡️ 防衛戦！ 魔物の大群が迫っている</b><span>撃破 ${hd.killed} / ${hd.size}体 ・ 守っている ${sim.charsIn(this.worldId).filter((c) => c.act.kind === 'defend').length}人</span><i>町の耐久 ${hearts}</i>`;
+      if (html !== o.userData.last) { o.userData.lb.inner.innerHTML = html; o.userData.last = html; }
+    }
+    for (const r of sim.races) {
+      if (r.world !== this.worldId) continue;
+      const key = 'r' + r.id;
+      evs.add(key);
+      let o = this.eventObjs.get(key);
+      if (!o) {
+        o = buildTreasureMark();
+        o.position.set(r.x, 0, r.z);
+        const lb = label('', 'raid-label race-label');
+        lb.position.y = 6;
+        o.add(lb);
+        o.userData = { lb, last: '' };
+        this.scene.add(o);
+        this.eventObjs.set(key, o);
+      }
+      const here = r.racers.filter((id) => this.app.model.charById.get(id).world === r.world).length;
+      const html = `<b>🗺️ 「${escapeHtml(r.item)}」が眠る場所</b><span>挑戦者 ${r.racers.length}人（到着 ${here}人）</span>`;
+      if (html !== o.userData.last) { o.userData.lb.inner.innerHTML = html; o.userData.last = html; }
+    }
+    for (const key of [...this.eventObjs.keys()]) if (!evs.has(key)) this.removeObj(this.eventObjs, key);
 
     // 移動エフェクト (光の柱)
     for (const e of sim.effects) {

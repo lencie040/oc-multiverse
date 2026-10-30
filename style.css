@@ -218,3 +218,7 @@ body.nopanels #events, body.nopanels #info { display: none; }
 #fade { position: fixed; inset: 0; z-index: 7; pointer-events: none; background: #05061a; opacity: 0; }
 #fade.on { animation: fadeCut .7s ease-out; }
 @keyframes fadeCut { 0% { opacity: .9; } 100% { opacity: 0; } }
+
+.world-label em.raid.race { background: #e0a020; }
+.horde-label { border-color: #ff9a3a; box-shadow: 0 0 18px rgba(255, 154, 58, .5); background: rgba(40, 18, 0, .85); }
+.race-label { border-color: #ffd23a; box-shadow: 0 0 14px rgba(255, 210, 58, .45); background: rgba(40, 30, 0, .85); }

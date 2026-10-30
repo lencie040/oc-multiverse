@@ -1,7 +1,7 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=21';
-import { prioOf } from './director.js?v=21';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=21';
+import { CATS } from './sim.js?v=22';
+import { prioOf } from './director.js?v=22';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=22';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -200,7 +200,11 @@ export class UI {
     const { model } = this.app;
     const wn = (id) => model.worlds.get(id)?.name ?? id;
     const rare = r.treasures.filter((x) => x.rare);
+    const hw = r.hordesWon || [], hl = r.hordesLost || [], rw = r.racesWon || [];
     const head = r.raidsWon.length ? `号外！ レイドボス「${r.raidsWon[0].name}」を${r.raidsWon[0].n}人で撃破！`
+      : rw.length ? `お宝発見！ ${rw[0].name}が伝説の「${rw[0].item}」を掘り当てる`
+      : hl.length ? `${wn(hl[0].world)}の町、魔物の大群に荒らされる`
+      : hw.length ? `${wn(hw[0].world)}、${hw[0].n}人で魔物の大群を撃退！`
       : rare.length ? `大発見！ ${rare[0].name}が「${rare[0].item}」を発見`
       : r.raidsLost.length ? `レイドボス「${r.raidsLost[0].name}」の猛威…${r.raidsLost[0].n}人が倒れる`
       : r.bestFriends.length ? `${r.bestFriends[0][0]}と${r.bestFriends[0][1]}が親友に`
@@ -214,6 +218,8 @@ export class UI {
       + `<h4>⚔️ 魔物退治MVP</h4>${li(r.mvp, (m, i) => `${escapeHtml(m.name)} … ${m.n}体`)}`
       + `<h4>🐉 レイド</h4>${li([...r.raidsWon.map((x) => ({ ...x, res: 'win' })), ...r.raidsLost.map((x) => ({ ...x, res: 'lose' })), ...(r.raidsFled || []).map((x) => ({ ...x, res: 'fled' }))],
         (x) => `${escapeHtml(wn(x.world))}の「${escapeHtml(x.name)}」… ${x.res === 'win' ? `${x.n}人で撃破🏆` : x.res === 'lose' ? `${x.n}人が敗北💥` : `${x.n}人が撤退🏃`}`)}`
+      + `<h4>🛡️ 防衛戦</h4>${li([...hw.map((x) => ({ ...x, ok: true })), ...hl], (x) => `${escapeHtml(wn(x.world))} … ${x.ok ? `${x.n}人で撃退🎊（${x.killed}体）` : `町が荒らされた🏚️`}`)}`
+      + `<h4>🗺️ 宝の地図争奪戦</h4>${li(rw, (x) => `${escapeHtml(wn(x.world))}で ${escapeHtml(x.name)} が「${escapeHtml(x.item)}」を獲得（${x.n}人の争奪戦）`)}`
       + `<h4>💕 新しい親友</h4>${li(r.bestFriends, ([a, b]) => `${escapeHtml(a)} と ${escapeHtml(b)}`)}`
       + `<h4>💎 見つかった宝物</h4>${li([...rare, ...r.treasures.filter((x) => !x.rare)].slice(0, 8), (x) => `${x.rare ? '💎' : '✨'} ${escapeHtml(x.name)}「${escapeHtml(x.item)}」`)}`
       + `<h4>🌌 世界団を越えたキャラ</h4>${li(r.danJumps, (x) => `${escapeHtml(x.name)}（${escapeHtml(wn(x.from))} → ${escapeHtml(wn(x.to))}）`)}`
@@ -288,10 +294,14 @@ export class UI {
   raidBoxes(filter = () => true) {
     const { sim } = this.app;
     const rs = sim.raids.filter(filter);
-    if (!rs.length) return '';
-    return `<h3>🐉 発生中のレイド</h3>` + rs.map((r) => {
+    const hs = sim.hordes.filter(filter), races = sim.races.filter(filter);
+    if (!rs.length && !hs.length && !races.length) return '';
+    return `<h3>⚡ 発生中のイベント</h3>`
+      + hs.map((h) => `<div class="raidbox" data-w="${escapeHtml(h.world)}">${this.wchip(h.world)}<b>🛡️ 魔物の大群</b><small>撃破 ${h.killed}/${h.size}体 ・ 町の耐久 ${h.hp}/${h.maxHp}</small></div>`).join('')
+      + races.map((r) => `<div class="raidbox" data-w="${escapeHtml(r.world)}">${this.wchip(r.world)}<b>🗺️ 「${escapeHtml(r.item)}」争奪戦</b><small>挑戦者 ${r.racers.map((id) => escapeHtml(this.app.model.charById.get(id).name)).join('、')}</small></div>`).join('')
+      + rs.map((r) => {
       const left = Math.max(0, Math.ceil(r.until - sim.t));
-      return `<div class="raidbox" data-w="${escapeHtml(r.world)}">${this.wchip(r.world)}<b>${escapeHtml(r.name)}</b>`
+      return `<div class="raidbox" data-w="${escapeHtml(r.world)}">${this.wchip(r.world)}<b>🐉 ${escapeHtml(r.name)}</b>`
         + `<small>戦闘力 ${r.power} ・ 集まった戦力 ${Math.round(sim.raidPower(r))}（${sim.raidFighters(r).length}組）`
         + ` ・ ${r.phase === 'fight' ? '激闘中！' : `あと${left}分で開戦`}</small></div>`;
     }).join('');

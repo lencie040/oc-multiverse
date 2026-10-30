@@ -1,9 +1,9 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=21';
+import { weighted } from './util.js?v=22';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
-  ['🐉', 100], ['🔥', 95], ['🏆', 92], ['💥', 88], ['🌌', 80], ['💎', 75], ['💕', 70], ['🥊', 62], ['📣', 60],
+  ['🐉', 100], ['🔥', 95], ['🛡️', 93], ['🏆', 92], ['💰', 90], ['🎊', 86], ['🏚️', 86], ['🗺️', 72], ['💥', 88], ['🌌', 80], ['💎', 75], ['💕', 70], ['🥊', 62], ['📣', 60],
   ['🏃', 55], ['🙅', 45], ['🌀', 40], ['🎒', 35], ['⛺', 30], ['💫', 28], ['⚔️', 20], ['🏠', 15],
 ];
 export function prioOf(e) {
@@ -76,6 +76,7 @@ export class Director {
       app.selectChar(null);
       app.openWorld(e.world);
       if (raid) app.view.focusOn(raid.x, raid.z, 70);
+      else if (app.sim.hordeAt(e.world)) app.view.focusOn(0, 0, 80);
     }
     this.prio = p;
     this.until = now() + (p >= 80 ? 18 : 12);
@@ -85,6 +86,21 @@ export class Director {
   pickIdle() {
     const { app } = this;
     const { sim, model } = app;
+    // 防衛戦中なら、戦っている人を映す
+    const hd = sim.hordes[0];
+    if (hd && Math.random() < 0.6) {
+      const ds = model.chars.filter((c) => c.world === hd.world && c.act.kind === 'defend' && !c.partyLeader);
+      const c = ds.find((x) => x.act.fightUntil) || ds[0];
+      if (c) {
+        this.newTake();
+        app.following = true;
+        app.selectChar(c.id, { focus: true });
+        this.prio = 85;
+        this.until = now() + 12;
+        app.ui.caption(`🎬 防衛戦！ ${c.name}が「${sim.wname(hd.world)}」の町を守っている`);
+        return;
+      }
+    }
     // レイドが起きていれば、まずはそこを映す
     const raid = sim.raids.find((r) => r.phase === 'fight') || sim.raids[0];
     if (raid && Math.random() < 0.8) {
@@ -105,6 +121,8 @@ export class Director {
       let w = 0;
       if (c.transit) w = 6;
       else if (c.act.kind === 'raid') w = 7;
+      else if (c.act.kind === 'defend') w = 6;
+      else if (c.act.kind === 'dig') w = 5;
       else if (c.act.kind === 'fight') w = 5;
       else if (c.act.kind === 'chat') w = 3;
       else if (c.trip) w = 3;
@@ -151,7 +169,8 @@ export class Director {
       if (!c) base = { ...SHOTS.establish, dist: v.bound * 1.2 };
       else if (app.sim.transitOf(c)) base = SHOTS.flying;
       else if (c.state === 'sleep' || c.state === 'camp' || c.state === 'down') base = SHOTS.sleep;
-      else if (c.act.kind === 'fight') base = SHOTS.fight;
+      else if (c.act.kind === 'fight' || (c.act.kind === 'defend' && c.act.fightUntil)) base = SHOTS.fight;
+      else if (c.act.kind === 'defend') base = SHOTS.walk;
       else if (c.act.kind === 'raid') base = SHOTS.raidMember;
       else if (c.act.kind === 'chat' || c.act.cat === 'social') base = SHOTS.chat;
       else if (c.walking) base = SHOTS.walk;

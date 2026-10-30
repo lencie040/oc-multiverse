@@ -1,19 +1,19 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=21';
-import { Sim } from './sim.js?v=21';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=21';
-import { UI } from './ui.js?v=21';
-import { Director } from './director.js?v=21';
-import { Sound, moodOf } from './audio.js?v=21';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=21';
+import { buildModel } from './model.js?v=22';
+import { Sim } from './sim.js?v=22';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=22';
+import { UI } from './ui.js?v=22';
+import { Director } from './director.js?v=22';
+import { Sound, moodOf } from './audio.js?v=22';
+import { REAL_SEC_PER_GAME_MIN } from './util.js?v=22';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=21').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=22').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     try {
@@ -183,14 +183,14 @@ class App {
   updateMusic() {
     const v = this.view;
     if (v.kind !== 'world') return this.sound.setMood('space', false, v.kind === 'dan' ? 'dan:' + v.danId : 'space');
-    const r = this.sim.raidAt(v.worldId);
+    const r = this.sim.raidAt(v.worldId) || this.sim.hordeAt(v.worldId);
     const h = this.sim.hour;
     this.sound.setMood(r ? 'battle' : moodOf(v.world), h >= 21 || h < 5, r ? 'raid:' + r.id : v.worldId);
   }
   eventSound(e) {
     const here = this.view?.kind === 'world' && e.world === this.view.worldId;
     const t = e.text;
-    const big = [['🐉', 'horn'], ['🏆', 'fanfare'], ['💥', 'lose'], ['🏃', 'whoosh'], ['🌌', 'dan'], ['💎', 'treasure'], ['💕', 'heart'], ['📣', 'chime'], ['🥊', 'boss']];
+    const big = [['🐉', 'horn'], ['🏆', 'fanfare'], ['💥', 'lose'], ['🏃', 'whoosh'], ['🛡️', 'horn'], ['💰', 'fanfare'], ['🎊', 'fanfare'], ['🏚️', 'lose'], ['🗺️', 'treasure'], ['🌌', 'dan'], ['💎', 'treasure'], ['💕', 'heart'], ['📣', 'chime'], ['🥊', 'boss']];
     for (const [k, name] of big) if (t.startsWith(k)) return this.sound.play(name);
     if (!here) return;
     if (t.startsWith('🌀') || t.includes('に到着した')) this.sound.play('portal');
