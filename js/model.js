@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=27';
-import { themeOf } from './themes.js?v=27';
+import { seeded, hashStr } from './util.js?v=28';
+import { themeOf } from './themes.js?v=28';
 
 export const LEVEL = 50;
 export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限
@@ -32,6 +32,7 @@ export function buildModel(raw) {
   for (const c of chars) c.dan = worlds.get(c.home).dan;
 
   for (const d of dans) layoutDan(d, worlds);
+  layoutDans(dans);
   for (const w of worlds.values()) {
     w.theme = themeOf(w);
     w.danger = Math.min(w.num, MAX_DANGER);
@@ -40,7 +41,25 @@ export function buildModel(raw) {
   return { worlds, chars, charById: new Map(chars.map((c) => [c.id, c])), dans, danById, types: raw.types };
 }
 
+// 世界団の配置: しょ (シーズン1) は遠く離れた所に、シーズン2の世界団は一列に並ぶ。隣どうしだけ行き来できる
+const SEASON1 = new Set(['䥚']);
+export const DAN_GAP = 340, SEASON_GAP = 1300;
+function layoutDans(dans) {
+  const s1 = dans.filter((d) => SEASON1.has(d.id)), s2 = dans.filter((d) => !SEASON1.has(d.id));
+  const left = -((s2.length - 1) / 2) * DAN_GAP;
+  s2.forEach((d, i) => { d.season = 2; d.pos = { x: left + i * DAN_GAP, y: Math.sin(i * 1.7) * 40, z: (i % 2 ? -1 : 1) * 70 }; });
+  s1.forEach((d, i) => { d.season = 1; d.pos = { x: left - SEASON_GAP, y: 80, z: 260 + i * DAN_GAP }; });
+  for (const d of dans) d.neighbors = [];
+  const link = (a, b) => { a.neighbors.push(b.id); b.neighbors.push(a.id); };
+  for (let i = 1; i < s2.length; i++) link(s2[i - 1], s2[i]);
+  for (let i = 1; i < s1.length; i++) link(s1[i - 1], s1[i]);
+  if (s1.length && s2.length) link(s1[s1.length - 1], s2[0]);
+}
+// 世界団の移動に必要なpt (1人あたり): シーズンをまたぐと120pt、同じシーズンなら40pt
+export const danCost = (a, b) => (a.season !== b.season ? 120 : 40);
+
 // 汎異記号の1文字目が同じ世界線を近くに配置し、近いもの同士を「隣」にする
+const SPREAD = 3.5;
 function layoutDan(dan, worlds) {
   const rng = seeded(hashStr('dan:' + dan.id));
   const groups = new Map();
@@ -63,7 +82,8 @@ function layoutDan(dan, worlds) {
     ws.forEach((w, j) => {
       const a = j * 2.39996 + rng() * 0.3;
       const r = j === 0 ? 0 : 9 + 8.5 * Math.sqrt(j);
-      w.pos = { x: cx + Math.cos(a) * r, y: y + rng.range(-6, 6), z: cz + Math.sin(a) * r };
+      // 広い宇宙に見えるよう、世界線どうしの間隔を大きく開ける
+      w.pos = { x: (cx + Math.cos(a) * r) * SPREAD, y: (y + rng.range(-6, 6)) * SPREAD, z: (cz + Math.sin(a) * r) * SPREAD };
     });
   });
 

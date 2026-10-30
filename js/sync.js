@@ -8,6 +8,8 @@ const LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm';
 const DELTA_EVERY = 2000;
 const SAVE_EVERY = 120000;
 const MAX_MSG = 90000; // 1回の送信の大きさの目安 (文字数)
+// このファイルの版 (?v=N)。新しい版の人がいればその人がホストになり、古い版の画面は自動で読み込み直す
+const APP_V = Number(new URL(import.meta.url).searchParams.get('v')) || 0;
 
 // 小数は2桁に丸めて小さくする
 const round = (k, v) => (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 100) / 100 : v);
@@ -53,7 +55,7 @@ export class Sync {
     this.ch.on('broadcast', { event: 'hello' }, () => { if (this.role === 'host') this.resetSent(); });
     this.ch.subscribe(async (status) => {
       if (status !== 'SUBSCRIBED') return;
-      await this.ch.track({ since: this.since });
+      await this.ch.track({ since: this.since, v: APP_V });
       // 少し待ってもほかに誰もいなければ自分がホスト
       setTimeout(() => this.elect(), 1500);
     });
@@ -64,10 +66,11 @@ export class Sync {
   elect() {
     if (!this.ch) return;
     const st = this.ch.presenceState();
-    const members = Object.entries(st).map(([id, metas]) => ({ id, since: metas[0]?.since ?? Infinity }));
+    const members = Object.entries(st).map(([id, metas]) => ({ id, since: metas[0]?.since ?? Infinity, v: metas[0]?.v ?? 0 }));
     if (!members.some((m) => m.id === this.id)) return;
+    if (members.some((m) => m.v > APP_V) && !this.reloading) { this.reloading = true; location.reload(); return; }
     this.viewers = members.length;
-    members.sort((a, b) => a.since - b.since || (a.id < b.id ? -1 : 1));
+    members.sort((a, b) => b.v - a.v || a.since - b.since || (a.id < b.id ? -1 : 1));
     this.setRole(members[0].id === this.id ? 'host' : 'viewer');
   }
 
@@ -129,7 +132,7 @@ export class Sync {
     let batch = [], size = 0;
     const flush = () => {
       if (!batch.length) return;
-      this.ch.send({ type: 'broadcast', event: 'delta', payload: { t: sim.t, parts: pack(batch) } });
+      this.ch.send({ type: 'broadcast', event: 'delta', payload: { t: sim.t, v: APP_V, parts: pack(batch) } });
       batch = []; size = 0;
     };
     for (const p of parts) {
@@ -140,8 +143,9 @@ export class Sync {
     flush();
   }
 
-  receive({ parts }) {
+  receive({ parts, v = 0 }) {
     if (this.role !== 'viewer' && this.role !== 'wait') return;
+    if (v < APP_V) return; // 古い版のホストからの状態は使わない
     const { sim, model } = this.app;
     for (const p of parts) {
       if (p[0] === 'world') sim.applyWorld(p[1]);

@@ -1,20 +1,23 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=27';
-import { Sim } from './sim.js?v=27';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=27';
-import { UI } from './ui.js?v=27';
-import { Director } from './director.js?v=27';
-import { Sound, moodOf } from './audio.js?v=27';
-import { MIN_PER_DAY, nowGameT } from './util.js?v=27';
-import { Sync } from './sync.js?v=27';
+import { buildModel } from './model.js?v=28';
+import { Sim } from './sim.js?v=28';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=28';
+import { UI } from './ui.js?v=28';
+import { Director } from './director.js?v=28';
+import { Sound, moodOf } from './audio.js?v=28';
+import { MIN_PER_DAY, nowGameT } from './util.js?v=28';
+import { Sync } from './sync.js?v=28';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
+const SETTINGS_KEY = 'oc-multiverse-settings';
+// グラフィック設定ごとの描画解像度
+const PIXEL_RATIO = { low: 0.75, mid: 1, high: 2, ultra: 2 };
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=27').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=28').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -27,7 +30,8 @@ class App {
     // 閉じていた間の出来事を進めて、現実の時刻に追いつく (同期中はホストが進める)
     if (this.sync.role === 'solo') this.sim.catchUp();
 
-    this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true };
+    this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true, gfx: 'high', ui: 1 };
+    try { Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* 保存できない環境 */ }
     this.sound = new Sound();
     this.sim.listen((e) => this.eventSound(e));
     this.keys = {};
@@ -36,7 +40,8 @@ class App {
 
     const stage = document.getElementById('stage');
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, PIXEL_RATIO[this.settings.gfx] ?? 2));
+    document.documentElement.style.setProperty('--ui', this.settings.ui);
     this.renderer.setSize(innerWidth, innerHeight);
     stage.appendChild(this.renderer.domElement);
     this.labels = new CSS2DRenderer();
@@ -64,6 +69,21 @@ class App {
   }
 
   // ---------- 画面遷移 ----------
+  // 設定を変えて保存する。グラフィックが変わったら今の画面を作り直す
+  setSetting(k, v) {
+    this.settings[k] = v;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ gfx: this.settings.gfx, ui: this.settings.ui })); } catch (e) { /* 保存できない環境 */ }
+    if (k === 'ui') document.documentElement.style.setProperty('--ui', v);
+    if (k === 'gfx') {
+      this.renderer.setPixelRatio(Math.min(devicePixelRatio, PIXEL_RATIO[v] ?? 2));
+      const keep = { keepFollow: true };
+      const cur = this.view;
+      if (cur.kind === 'world') { this.view = null; cur.dispose(); this.openWorld(cur.worldId, keep); }
+      else if (cur.kind === 'dan') this.openDan(cur.danId, keep);
+      else this.goUniverse(keep);
+    }
+  }
+
   setView(v, hash) {
     this.view?.dispose();
     if (this.view) this.sound.play('whoosh');
@@ -89,15 +109,16 @@ class App {
   }
   // キャラのいる場所を映す: 世界線にいれば世界線、移動中なら世界団マップか宇宙マップ
   // 追跡中の移動は「出発の世界線で飛び立つ → マップ上を飛ぶ → 到着の世界線に降りる」の3場面で映す
-  viewFor(c, follow = this.following) {
+  viewFor(c) {
     const tr = this.sim.transitOf(c);
     if (!tr) return { kind: 'world', id: c.world };
-    if (follow) {
-      const f = this.sim.transitProgress(tr);
-      if (f < 0.2) return { kind: 'world', id: tr.from };
-      if (f >= 0.8) return { kind: 'world', id: tr.to };
-    }
-    return tr.kind === 'line' ? { kind: 'dan', id: this.model.worlds.get(tr.from).dan } : { kind: 'universe' };
+    const { stage } = this.sim.transitStage(tr);
+    const danOf = (wid) => this.model.worlds.get(wid).dan;
+    if (stage === 'up') return { kind: 'world', id: tr.from };
+    if (stage === 'down') return { kind: 'world', id: tr.to };
+    if (stage === 'line' || stage === 'exit') return { kind: 'dan', id: danOf(tr.from) };
+    if (stage === 'enter') return { kind: 'dan', id: danOf(tr.to) };
+    return { kind: 'universe' };
   }
   isShowing(v) {
     const cur = this.view;
@@ -209,7 +230,7 @@ class App {
     // 現実の時計に合わせて進める。タブを隠していた間の遅れは、通知 (音・カメラ・テロップ) なしで少しずつ追いつく
     const gap = nowGameT() - this.sim.t;
     if (!this.sync.running) this.sim.coast(Math.max(0, gap));
-    else if (gap > 2 * MIN_PER_DAY) this.sim.catchUp();
+    else if (gap > MIN_PER_DAY / 2) this.sim.catchUp();
     else if (gap > 1) { this.sim.quiet = true; this.sim.update(Math.min(gap, 30)); this.sim.quiet = false; }
     else if (gap > 0) this.sim.update(gap);
     this.view.update(dt);

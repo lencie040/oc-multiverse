@@ -2,8 +2,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=27';
-import { TYPE_COLOR } from './types.js?v=27';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=28';
+import { TYPE_COLOR } from './types.js?v=28';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -12,8 +12,12 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=27';
-import { CATS } from './sim.js?v=27';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=28';
+import { CATS } from './sim.js?v=28';
+
+// グラフィック設定 (低・中・高・最高)
+const gfx = () => window.app?.settings?.gfx || 'high';
+const GFX_STARS = { low: 0.4, mid: 0.7, high: 1, ultra: 1.6 };
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -29,6 +33,7 @@ function label(html, cls) {
 }
 
 function starfield(n = 2500, r = 900) {
+  n = Math.round(n * (GFX_STARS[gfx()] ?? 1));
   const pos = new Float32Array(n * 3);
   const col = new Float32Array(n * 3);
   const c = new THREE.Color();
@@ -64,7 +69,7 @@ class BaseView {
   constructor(app) {
     this.app = app;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 5000);
+    this.camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 30000);
     this.controls = new OrbitControls(this.camera, app.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
@@ -150,20 +155,22 @@ class BaseView {
     return !!o;
   }
   // 移動中のキャラのコマ (世界団マップ・宇宙マップ共通)
+  // filter(tr, stage) でこの画面に出すかを決め、posOf(tr, f, stage) でその段階の中の位置を返す
   syncTravelers(filter, posOf, size) {
     const { model, sim } = this.app;
     this.tokens ??= new Map();
     const seen = new Set();
     for (const c of model.chars) {
       const tr = c.transit;
-      if (!tr || !filter(tr)) continue;
+      if (!tr) continue;
+      const { stage, f } = sim.transitStage(tr);
+      if (!filter(tr, stage)) continue;
       seen.add(c.id);
       let tk = this.tokens.get(c.id);
       if (!tk) { tk = this.makeToken(c, size); this.tokens.set(c.id, tk); }
-      const f = sim.transitProgress(tr);
-      tk.g.position.copy(posOf(tr, f));
+      tk.g.position.copy(posOf(tr, f, stage));
       const pts = [];
-      for (let i = 0; i <= 20; i++) pts.push(posOf(tr, (f * i) / 20));
+      for (let i = 0; i <= 20; i++) pts.push(posOf(tr, (f * i) / 20, stage));
       tk.trail.geometry.setFromPoints(pts);
       // 引いて見ていても豆粒にならないよう、画面上の大きさに下限を設ける
       const camD = this.camera.position.distanceTo(tk.g.position);
@@ -216,10 +223,10 @@ class BaseView {
     const tgt = this.controls.target;
     const p = tk.g.position;
     // マップに切り替わった直後や遠く離れている時は、すぐにキャラの近くへカメラを移す
-    if (!this.followSnapped || tgt.distanceTo(p) > 120) {
+    if (!this.followSnapped || tgt.distanceTo(p) > 400) {
       this.followSnapped = true;
       const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(tgt));
-      sph.radius = this.kind === 'universe' ? 70 : 40;
+      sph.radius = this.kind === 'universe' ? 90 : 60;
       sph.phi = Math.PI / 2 - 0.4;
       tgt.copy(p);
       this.camera.position.copy(p).add(new THREE.Vector3().setFromSpherical(sph));
@@ -247,19 +254,19 @@ export class UniverseView extends BaseView {
     this.kind = 'universe';
     const { model } = app;
     this.scene.background = new THREE.Color('#04050d');
-    this.scene.add(starfield());
+    this.scene.add(starfield(5000, 9000));
     this.scene.add(new THREE.AmbientLight('#ffffff', 0.6));
     const sun = new THREE.PointLight('#ffffff', 2.5, 0, 0);
     this.scene.add(sun);
-    const n = model.dans.length;
     this.spheres = [];
     this.danPos = new Map();
+    // 世界団の位置は model で決めてある (しょ = シーズン1 は遠く離れている)
+    const box = new THREE.Box3();
     model.dans.forEach((d, i) => {
-      const a = (i / n) * Math.PI * 2;
-      const R = 70;
-      const radius = 8 + Math.sqrt(d.worlds.length) * 1.8;
+      const radius = (8 + Math.sqrt(d.worlds.length) * 1.8) * 3;
       const g = new THREE.Group();
-      g.position.set(Math.cos(a) * R, Math.sin(i * 1.7) * 10, Math.sin(a) * R);
+      g.position.set(d.pos.x, d.pos.y, d.pos.z);
+      box.expandByPoint(g.position);
       this.danPos.set(d.id, { p: g.position, r: radius });
       const core = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 32),
         new THREE.MeshStandardMaterial({ color: d.color, emissive: d.color, emissiveIntensity: 0.25, roughness: 0.35, transparent: true, opacity: 0.55 }));
@@ -293,25 +300,40 @@ export class UniverseView extends BaseView {
       this.pickables.push(g);
       this.spheres.push(g);
     });
-    this.camera.position.set(0, 70, 160);
-    this.controls.target.set(0, 0, 0);
+    // 隣どうしの世界団をつなぐ線 (ここしか行き来できない)
+    const lp = [];
+    for (const d of model.dans) for (const nb of d.neighbors) if (nb > d.id) {
+      const o = model.danById.get(nb);
+      lp.push(d.pos.x, d.pos.y, d.pos.z, o.pos.x, o.pos.y, o.pos.z);
+      const far = d.season !== o.season;
+      const mid = label(`${far ? '🌠 シーズンをまたぐ' : '🛸'} ${far ? 120 : 40}pt`, 'route-label');
+      mid.position.set((d.pos.x + o.pos.x) / 2, (d.pos.y + o.pos.y) / 2 + 12, (d.pos.z + o.pos.z) / 2);
+      this.scene.add(mid);
+    }
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+    this.scene.add(new THREE.LineSegments(lg, new THREE.LineDashedMaterial({ color: '#9fb0ff', transparent: true, opacity: 0.35, dashSize: 12, gapSize: 8 })).computeLineDistances());
+    const center = box.getCenter(new THREE.Vector3());
+    const span = box.getSize(new THREE.Vector3()).length();
+    this.camera.position.set(center.x, center.y + span * 0.55, center.z + span * 0.95);
+    this.controls.target.copy(center);
     this.controls.minDistance = 30;
-    this.controls.maxDistance = 500;
+    this.controls.maxDistance = span * 3;
     this.controls.autoRotate = true;
-    this.controls.autoRotateSpeed = 0.4;
-    this.bound = 200;
+    this.controls.autoRotateSpeed = 0.25;
+    this.bound = span;
   }
   update(dt) {
     const { model } = this.app;
     const danOf = (wid) => this.danPos.get(model.worlds.get(wid).dan);
     const a = new THREE.Vector3(), b = new THREE.Vector3();
-    this.syncTravelers((tr) => tr.kind === 'dan', (tr, f) => {
+    this.syncTravelers((tr, stage) => tr.kind === 'dan' && stage === 'space', (tr, f) => {
       const A = danOf(tr.from), B = danOf(tr.to);
       a.copy(A.p); b.copy(B.p);
       const dir = b.clone().sub(a).normalize();
-      a.addScaledVector(dir, A.r); b.addScaledVector(dir, -B.r);
-      return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * 30, 0));
-    }, 6);
+      a.addScaledVector(dir, A.r * 1.3); b.addScaledVector(dir, -B.r * 1.3);
+      return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * a.distanceTo(b) * 0.08, 0));
+    }, 8);
     if (this.app.following || this.app.director.on) this.controls.autoRotate = false;
     if (this.followTraveler(dt)) return;
     super.update(dt);
@@ -328,13 +350,15 @@ export class ClusterView extends BaseView {
     const { model, sim } = app;
     const dan = model.danById.get(danId);
     this.scene.background = new THREE.Color('#05061a');
-    this.scene.add(starfield());
     this.scene.add(new THREE.HemisphereLight('#ffffff', '#334', 1.4));
     const dl = new THREE.DirectionalLight('#ffffff', 1.2);
     dl.position.set(50, 100, 30);
     this.scene.add(dl);
 
     this.nodes = new Map();
+    // 最高設定: 球を透かして、中に世界線の様子 (島・家・キャラ) を小さく映す
+    this.ultra = gfx() === 'ultra';
+    this.miniChars = new Map();
     let maxR = 10;
     const linePts = [];
     for (const wid of dan.worlds) {
@@ -343,8 +367,10 @@ export class ClusterView extends BaseView {
       const g = new THREE.Group();
       g.position.set(w.pos.x, w.pos.y, w.pos.z);
       const sph = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 20),
-        new THREE.MeshStandardMaterial({ color: w.theme.ground, emissive: w.theme.ground, emissiveIntensity: 0.35, roughness: 0.6 }));
+        new THREE.MeshStandardMaterial({ color: w.theme.ground, emissive: w.theme.ground, emissiveIntensity: 0.35, roughness: 0.6, ...(this.ultra ? { transparent: true, opacity: 0.16, depthWrite: false } : {}) }));
       g.add(sph);
+      const mini = this.ultra ? buildMini(w, model, r) : null;
+      if (mini) g.add(mini);
       const atm = new THREE.Mesh(new THREE.SphereGeometry(r * 1.25, 24, 16),
         new THREE.MeshBasicMaterial({ color: w.theme.sky, transparent: true, opacity: 0.18, side: THREE.BackSide }));
       g.add(atm);
@@ -365,7 +391,7 @@ export class ClusterView extends BaseView {
       };
       this.scene.add(g);
       this.pickables.push(g);
-      this.nodes.set(wid, { g, lb, w, r, last: '' });
+      this.nodes.set(wid, { g, lb, w, r, mini, last: '' });
       maxR = Math.max(maxR, Math.hypot(w.pos.x, w.pos.z) + r);
       for (const nb of w.neighbors) if (nb > wid) {
         const o = model.worlds.get(nb);
@@ -391,6 +417,8 @@ export class ClusterView extends BaseView {
       this.scene.add(lb);
     }
 
+    this.scene.add(starfield(3000, Math.max(900, maxR * 5)));
+    this.maxR = maxR;
     this.camera.position.set(0, maxR * 0.6, maxR * 1.1);
     this.controls.minDistance = 10;
     this.controls.maxDistance = maxR * 5;
@@ -419,18 +447,108 @@ export class ClusterView extends BaseView {
   }
   update(dt) {
     const a = new THREE.Vector3(), b = new THREE.Vector3();
-    this.syncTravelers((tr) => tr.kind === 'line' && this.nodes.has(tr.from), (tr, f) => {
-      const A = this.nodes.get(tr.from), B = this.nodes.get(tr.to);
-      a.copy(A.g.position); b.copy(B.g.position);
-      const dir = b.clone().sub(a).normalize();
-      a.addScaledVector(dir, A.r); b.addScaledVector(dir, -B.r);
-      return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * 6, 0));
+    const { model } = this.app;
+    // 世界団の外へ出る/外から入る時の、世界団のふちの点 (相手の世界団のある方向)
+    const edgeToward = (danId) => {
+      const me = model.danById.get(this.danId).pos, o = model.danById.get(danId).pos;
+      return new THREE.Vector3(o.x - me.x, (o.y - me.y) * 0.3, o.z - me.z).normalize().multiplyScalar(this.maxR * 1.25);
+    };
+    this.syncTravelers((tr, stage) => {
+      if (tr.kind === 'line') return this.nodes.has(tr.from) && stage !== 'down';
+      return (this.nodes.has(tr.from) && (stage === 'up' || stage === 'exit')) || (this.nodes.has(tr.to) && stage === 'enter');
+    }, (tr, f, stage) => {
+      if (tr.kind === 'line') {
+        const A = this.nodes.get(tr.from), B = this.nodes.get(tr.to);
+        a.copy(A.g.position); b.copy(B.g.position);
+        const dir = b.clone().sub(a).normalize();
+        a.addScaledVector(dir, A.r); b.addScaledVector(dir, -B.r);
+        const k = stage === 'up' ? 0 : f;
+        return a.clone().lerp(b, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * a.distanceTo(b) * 0.12, 0));
+      }
+      // 世界団の移動: 世界線から世界団のふちへ / ふちから行き先の世界線へ
+      if (stage === 'enter') {
+        const B = this.nodes.get(tr.to);
+        a.copy(edgeToward(tr.fromDan ?? model.worlds.get(tr.from).dan)); b.copy(B.g.position);
+        return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * 20, 0));
+      }
+      const A = this.nodes.get(tr.from);
+      a.copy(A.g.position); b.copy(edgeToward(tr.toDan ?? model.worlds.get(tr.to).dan));
+      const k = stage === 'up' ? 0 : f;
+      return a.clone().lerp(b, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * 20, 0));
     }, 4.5);
     if (this.followTraveler(dt)) return;
     super.update(dt);
     if ((this.refreshT -= dt) < 0) { this.refresh(); this.refreshT = 0.5; }
-    for (const n of this.nodes.values()) n.g.rotation.y += dt * 0.2;
+    for (const n of this.nodes.values()) n.g.rotation.y += dt * (this.ultra ? 0.05 : 0.2);
+    if (this.ultra) this.updateMiniChars();
   }
+  // 世界線の中にいるキャラを、小さな島の上に映す
+  updateMiniChars() {
+    const { model } = this.app;
+    const seen = new Set();
+    for (const c of model.chars) {
+      const n = this.nodes.get(c.world);
+      if (!n) continue;
+      seen.add(c.id);
+      let sp = this.miniChars.get(c.id);
+      if (!sp) {
+        const tex = charTexture(c);
+        sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.tex, transparent: true, alphaTest: 0.05 }));
+        sp.userData.tex = tex;
+        this.miniChars.set(c.id, sp);
+      }
+      if (sp.parent !== n.mini) n.mini.add(sp);
+      const H = 7 * (c.state === 'down' ? 0.6 : 1);
+      sp.scale.set(H * (sp.userData.tex.ready && c.img ? sp.userData.tex.aspect : 1), H, 1);
+      sp.position.set(c.x, H / 2, c.z);
+      sp.material.rotation = c.state === 'sleep' || c.state === 'camp' || c.state === 'down' ? Math.PI / 2 : 0;
+    }
+    for (const [id, sp] of this.miniChars) if (!seen.has(id)) { sp.parent?.remove(sp); this.miniChars.delete(id); }
+  }
+}
+
+// 世界団マップの球の中に置く、世界線の縮小模型 (最高設定)
+function buildMini(w, model, r) {
+  const { geo, theme: th } = w;
+  const g = new THREE.Group();
+  g.scale.setScalar((r * 0.8) / geo.R);
+  const ground = new THREE.Color(th.ground);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(geo.R, geo.R * 0.97, 2, 48), [
+    mat(ground.clone().multiplyScalar(0.7).getStyle()), mat(th.ground), mat(th.ground),
+  ]);
+  top.position.y = -1;
+  g.add(top);
+  const under = new THREE.Mesh(new THREE.ConeGeometry(geo.R * 0.97, geo.R * 0.5, 10), mat(ground.clone().multiplyScalar(0.45).getStyle()));
+  under.rotation.x = Math.PI;
+  under.position.y = -2 - geo.R * 0.25;
+  g.add(under);
+  const lm = buildProp(th.landmark, null, 0.7);
+  lm.scale.setScalar(clamp(geo.plazaR / 4, 1.6, 3));
+  g.add(lm);
+  for (const id of w.residents) {
+    const c = model.charById.get(id);
+    const h = geo.homes[id];
+    const roof = colorOf(c.colors[1] || c.colors[0], '#c0503a');
+    const house = buildHouse(colorOf(c.colors[0], '#cccccc'), roof === 'rainbow' ? '#c080ff' : roof);
+    const k = 1 + 2.8 / Math.max(1, Math.hypot(h.x, h.z));
+    house.position.set(h.x * k, 0, h.z * k);
+    house.rotation.y = Math.atan2(-h.x, -h.z);
+    g.add(house);
+  }
+  for (const wp of geo.works) {
+    const b = buildWorkplace(th.ground);
+    b.position.set(wp.x, 0, wp.z);
+    g.add(b);
+  }
+  // 自然物などは多いので一部だけ
+  for (const p of geo.props.slice(0, 30)) {
+    const o = buildProp(p.kind, p.color, p.seed);
+    o.position.set(p.x, 0, p.z);
+    o.rotation.y = p.rot;
+    o.scale.multiplyScalar(p.s);
+    g.add(o);
+  }
+  return g;
 }
 
 // ---------- キャラクターの見た目 ----------
@@ -622,7 +740,7 @@ export class WorldView extends BaseView {
     // パーティクル
     const pt = PARTICLES[th.particle];
     if (pt) {
-      const n = Math.min(900, Math.round(R * 5));
+      const n = Math.round(Math.min(900, R * 5) * (GFX_STARS[gfx()] ?? 1));
       const pos = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) {
         const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * R;
@@ -665,10 +783,8 @@ export class WorldView extends BaseView {
 
   charPoint(c) {
     const tr = this.app.sim.transitOf(c);
-    if (tr && (tr.from === this.worldId || tr.to === this.worldId)) {
-      const p = this.flightPos(tr);
-      return { x: p.x, y: p.y + 1.5, z: p.z };
-    }
+    const p = tr && this.flightPos(tr);
+    if (p) return { x: p.x, y: p.y + 1.5, z: p.z };
     return { x: c.x, y: 0, z: c.z };
   }
   // キャラを外側から島の中心に向かって見る構図で映す
@@ -774,7 +890,7 @@ export class WorldView extends BaseView {
     const here = new Set();
     for (const c of this.app.model.chars) {
       // この世界線を出発した・この世界線に向かっているキャラは空を飛んでいる姿を見せる
-      const fly = c.transit && (c.transit.from === this.worldId || c.transit.to === this.worldId) ? this.flightPos(c.transit) : null;
+      const fly = c.transit ? this.flightPos(c.transit) : null;
       if (c.world !== this.worldId && !fly) continue;
       here.add(c.id);
       let o = this.charObjs.get(c.id);
@@ -1044,10 +1160,12 @@ export class WorldView extends BaseView {
   }
 
   // 出発: ポータルから外へ向かって空に上がっていく / 到着: 空から降りてきてポータルに着く
+  // ゲートから飛び立つ (最初の15秒) / 空から降りてくる (最後の15秒) 姿。それ以外の間はこの世界線にはいない
   flightPos(tr) {
     const { sim } = this.app;
-    const f = sim.transitProgress(tr);
-    const leaving = tr.from === this.worldId;
+    const { stage, f } = sim.transitStage(tr);
+    const leaving = stage === 'up' && tr.from === this.worldId;
+    if (!leaving && !(stage === 'down' && tr.to === this.worldId)) return null;
     const d = leaving ? f : 1 - f;
     let base;
     if (tr.kind === 'line') {
@@ -1056,7 +1174,7 @@ export class WorldView extends BaseView {
     } else base = leaving ? { x: tr.sx ?? 0, z: tr.sz ?? 0 } : { x: tr.tx ?? 0, z: tr.tz ?? 0 };
     const len = Math.hypot(base.x, base.z) || 1;
     const out = tr.kind === 'line' ? this.bound * 0.3 * d : 0;
-    const up = tr.kind === 'line' ? 14 * d + 46 * d * d : 30 * d + 130 * d * d;
+    const up = tr.kind === 'line' ? 30 * d + 170 * d * d : 60 * d + 300 * d * d;
     return new THREE.Vector3(base.x + (base.x / len) * out, up, base.z + (base.z / len) * out);
   }
 

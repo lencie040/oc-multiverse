@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=27';
-import { prioOf } from './director.js?v=27';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=27';
-import { typeSummary, TYPE_COLOR } from './types.js?v=27';
+import { CATS } from './sim.js?v=28';
+import { prioOf } from './director.js?v=28';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=28';
+import { typeSummary, TYPE_COLOR } from './types.js?v=28';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -21,6 +21,14 @@ export class UI {
       app.view.refresh?.();
     });
     $('#tg-panels').addEventListener('click', () => document.body.classList.toggle('nopanels'));
+    // 設定 (グラフィック・UIの大きさ)
+    $('#tg-settings').addEventListener('click', () => { $('#settings').hidden = !$('#settings').hidden; });
+    $('#set-gfx').value = app.settings.gfx;
+    $('#set-gfx').addEventListener('change', (e) => app.setSetting('gfx', e.target.value));
+    const uiV = () => { $('#set-ui-v').textContent = `${Math.round(app.settings.ui * 100)}%`; };
+    $('#set-ui').value = Math.round(app.settings.ui * 100);
+    uiV();
+    $('#set-ui').addEventListener('input', (e) => { app.setSetting('ui', e.target.value / 100); uiV(); });
     $('#tg-director').addEventListener('click', () => app.director.toggle());
     $('#tg-news').addEventListener('click', () => this.showNews(true));
     $('#tg-toast').addEventListener('change', (e) => { app.settings.toasts = e.target.checked; });
@@ -374,7 +382,7 @@ export class UI {
       }).join('')}</div>`
       + this.rankings()
       + `<h3>旅をしているキャラ</h3><div class="list">${model.chars.filter((c) => c.trip && !c.partyLeader).map((c) => this.charRow(c, this.whereChip(c))).join('') || '<div class="sub">今はいません</div>'}</div>`
-      + `<h3>ルール</h3><div class="mlog">時間は現実の時計と同じように流れます（全員がブラウザを閉じている間の出来事も、次に開いたときに最大2日分さかのぼって進みます）。全員Lv50。世界線の移動には移動ptを使います（汎異記号の1文字目が同じ世界線へは1pt、違う世界線へは5pt、世界団の移動は40pt。仲間を連れていくと人数分）。ptはランク7で2日に1pt、ランク8で1日3pt、9で7pt、10で15pt、11で40ptたまり、3日分までためられます。世界団を越えられるのはランク11以上で、その日は力が半減します。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。魔物やレイドボスにもタイプがあり、相性がいいと戦闘力が上がります。誕生日には夕方に友達が集まってパーティーをし、勢力は本拠地で集会や合同訓練、ほかの勢力との対抗戦を開きます。</div>`;
+      + `<h3>ルール</h3><div class="mlog">時間は現実の時計と同じように流れます（全員がブラウザを閉じている間の出来事も、次に開いたときに最大12時間分さかのぼって進みます）。全員Lv50。世界線の移動には移動ptを使います（汎異記号の1文字目が同じ世界線へは1pt・3〜5分、違う世界線へは5pt・7〜10分。世界団は隣の世界団へだけ移動でき、シーズン2どうしは40pt、シーズン1（しょ）とシーズン2の間は120pt。仲間を連れていくと人数分）。ptはランク7で2日に1pt、ランク8で1日3pt、9で7pt、10で15pt、11で40ptたまり、3日分までためられます。世界団を越えた日は力が半減します。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。魔物やレイドボスにもタイプがあり、相性がいいと戦闘力が上がります。誕生日には夕方に友達が集まってパーティーをし、勢力は本拠地で集会や合同訓練、ほかの勢力との対抗戦を開きます。</div>`;
   }
 
   danInfo(d) {
@@ -435,7 +443,8 @@ export class UI {
     const maxStat = 200;
     const party = c.partyLeader ? [model.charById.get(c.partyLeader)] : c.party.map((id) => model.charById.get(id));
     const rate = sim.ptRate(c);
-    const danNext = c.rank >= 11 ? (sim.canDan(c) ? `可能（${40 * sim.partySize(c)}pt）` : `ptが足りない（${40 * sim.partySize(c)}pt必要）`) : '不可（ランク11未満）';
+    const curDan = model.worlds.get(c.world)?.dan;
+    const danNext = curDan ? model.danById.get(curDan).neighbors.map((d) => `${escapeHtml(d)}へ ${sim.danPrice(c, d)}pt${sim.canDan(c, d) ? '（行ける）' : ''}`).join(' ・ ') : '移動中';
     const ts = typeSummary(c.types);
     const tchip = (t) => `<b class="tchip" style="background:${TYPE_COLOR[t] || '#888'}">${escapeHtml(t)}</b>`;
     const bd = c.birthday ? `${escapeHtml(c.birthday)}${sim.isBirthday(c) ? ' 🎂 今日が誕生日！' : ''}` : '';

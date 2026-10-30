@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=27">
+  <link rel="stylesheet" href="style.css?v=28">
   <script type="importmap">
     {
       "imports": {
@@ -34,6 +34,18 @@
       <label><input type="checkbox" id="tg-wnames" checked> 世界線名</label>
       <label><input type="checkbox" id="tg-toast" checked> テロップ</label>
       <button id="tg-panels" title="パネルの表示切替 (H)">▤ パネル</button>
+      <button id="tg-settings" title="設定">⚙️ 設定</button>
+    </div>
+    <div id="settings" hidden>
+      <label>グラフィック
+        <select id="set-gfx">
+          <option value="low">低（軽い）</option>
+          <option value="mid">中</option>
+          <option value="high">高</option>
+          <option value="ultra">最高（宇宙から世界線の中が見える）</option>
+        </select>
+      </label>
+      <label>UIの大きさ <input type="range" id="set-ui" min="70" max="150" step="5"> <b id="set-ui-v"></b></label>
     </div>
   </header>
 
@@ -74,6 +86,6 @@
 
   <div id="loading">宇宙を準備しています…</div>
 
-  <script type="module" src="js/main.js?v=27"></script>
+  <script type="module" src="js/main.js?v=28"></script>
 </body>
 </html>
