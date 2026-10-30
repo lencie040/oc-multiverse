@@ -2,10 +2,18 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=26';
-import { TYPE_COLOR } from './types.js?v=26';
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=26';
-import { CATS } from './sim.js?v=26';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=27';
+import { TYPE_COLOR } from './types.js?v=27';
+
+// その場から動かない行動 (うろうろしない)
+const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
+// 行動中にときどき浮かぶ絵文字
+const AMBIENT = {
+  daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
+  training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
+};
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=27';
+import { CATS } from './sim.js?v=27';
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -773,19 +781,38 @@ export class WorldView extends BaseView {
       if (!o) { o = this.makeCharObj(c); this.charObjs.set(c.id, o); }
       const u = o.userData;
       u.sh.visible = !fly;
+      u.fidMoving = false;
       if (fly) o.position.copy(fly);
       else {
         o.position.y = 0;
-        const dx = c.x - o.position.x, dz = c.z - o.position.z;
-        if (dx * dx + dz * dz > 400) o.position.set(c.x, 0, c.z);
-        else { o.position.x += dx * Math.min(1, dt * 8); o.position.z += dz * Math.min(1, dt * 8); }
+        // 何かをしている最中も、その場で少しうろうろする (見た目だけ。同期はしない)
+        const still = !c.walking && c.state === 'ok' && !c.partyLeader && !c.transit && !STAY_KINDS.has(c.act.kind);
+        if (!still) u.fid = null;
+        else if ((u.fidT = (u.fidT ?? Math.random() * 4) - dt) < 0) {
+          u.fidT = 3 + Math.random() * 8;
+          const a = Math.random() * Math.PI * 2, r = Math.random() < 0.3 ? 0 : 0.6 + Math.random() * 1.8;
+          u.fid = { x: Math.cos(a) * r, z: Math.sin(a) * r };
+        }
+        const tx = c.x + (u.fid?.x || 0), tz = c.z + (u.fid?.z || 0);
+        const dx = tx - o.position.x, dz = tz - o.position.z, d2 = dx * dx + dz * dz;
+        if (d2 > 400) o.position.set(tx, 0, tz);
+        else if (still) {
+          const d = Math.sqrt(d2), s = Math.min(d, dt * 1.4);
+          if (d > 0.02) { o.position.x += (dx / d) * s; o.position.z += (dz / d) * s; u.fidMoving = d > 0.08; }
+        } else { o.position.x += dx * Math.min(1, dt * 8); o.position.z += dz * Math.min(1, dt * 8); }
+        // ときどき、していることに合わせた絵文字を浮かべる
+        if (still && (u.ambT = (u.ambT ?? 5 + Math.random() * 25) - dt) < 0) {
+          u.ambT = 15 + Math.random() * 30;
+          const em = AMBIENT[c.act.cat];
+          if (em && this.camera.position.distanceTo(o.position) < 70) this.floatText(o, em[Math.floor(Math.random() * em.length)], 3.2 + (c.rank - 1) * 0.12 + 1.4, 'emote', true);
+        }
       }
       const H = 3.2 + (c.rank - 1) * 0.12;
       const W = H * (u.tex.ready ? u.tex.aspect : 1) * (c.img ? 1 : 0.92);
       const down = c.state === 'down', lying = down || c.state === 'camp' || c.state === 'sleep';
       u.sp.material.rotation = lying ? Math.PI / 2 : 0;
       u.sp.scale.set(c.img ? W : H * 0.92, c.img ? H : H * 0.92, 1);
-      const bob = c.walking ? Math.abs(Math.sin(t * 9 + u.phase)) * 0.35 : 0;
+      const bob = c.walking || u.fidMoving ? Math.abs(Math.sin(t * 9 + u.phase)) * 0.35 : Math.sin(t * 2 + u.phase) * 0.04 + 0.04;
       u.sp.position.y = (lying ? Math.min(W, H) * 0.5 * 0.9 : (c.img ? H : H * 0.92) / 2) + bob;
       u.sp.material.color.set(down ? '#8a8a8a' : c.state === 'sleep' || c.state === 'camp' ? '#9aa6d0' : '#ffffff');
       u.sp.material.opacity = down ? 0.75 : 1;
@@ -1033,9 +1060,9 @@ export class WorldView extends BaseView {
     return new THREE.Vector3(base.x + (base.x / len) * out, up, base.z + (base.z / len) * out);
   }
 
-  floatText(parent, text, y, cls) {
+  floatText(parent, text, y, cls, silent = false) {
     if (this.floats.length > 120) return;
-    this.app.sound.play(cls === 'emote' ? 'pop' : cls);
+    if (!silent) this.app.sound.play(cls === 'emote' ? 'pop' : cls);
     const lb = label(escapeHtml(text), `float-${cls}`);
     lb.position.set((Math.random() - 0.5) * 1.6, y, (Math.random() - 0.5) * 0.6);
     parent.add(lb);

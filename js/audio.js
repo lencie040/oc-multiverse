@@ -1,5 +1,5 @@
 // BGM と効果音。音声ファイルは使わず Web Audio API でその場で作曲・合成する
-import { hashStr, seeded } from './util.js?v=26';
+import { hashStr, seeded } from './util.js?v=27';
 
 const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 const MINOR = [0, 2, 3, 5, 7, 8, 10];

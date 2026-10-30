@@ -1,7 +1,7 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=26';
-import { randomWild, randomTown, hopCost, cheapestPath } from './model.js?v=26';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=26';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=27';
+import { randomWild, randomTown, hopCost, cheapestPath } from './model.js?v=27';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=27';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -63,6 +63,9 @@ const FRIEND = 10, BEST = 25; // 友達・親友になる友好度 // 1ゲーム
 // 保存・同期するキャラの項目 (同期では吹き出しと絵文字も送る)
 const SAVE_KEYS = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins'];
 const SYNC_KEYS = [...SAVE_KEYS, 'bubble', 'emote'];
+// 普段の行動の長さ (現実の時間で、ずっと同じことをして見えないよう短めにする)
+const ACT_SCALE = 0.3;
+const SCALED_KINDS = new Set(['idle', 'train', 'explore', 'visit', 'help', 'chat']);
 const WALK_SPEED = 60; // 1分あたりの移動距離 (現実と同じ時間の流れで、歩く様子が見える速さ)
 const MAX_EVENTS = 500;
 
@@ -121,7 +124,7 @@ export class Sim {
       state: 'ok', pts: 0, halvedDay: -1,
       partyLeader: null, party: [], trip: null,
       meals: { day: -1, f: '' }, work: { day: -1, n: 0 },
-      act: { cat: 'daily', label: '起きた', until: this.t + r.range(0, 60), kind: 'idle' },
+      act: { cat: 'daily', label: '起きた', until: this.t + r.range(0, 15), kind: 'idle' },
       bubble: null, kills: 0, downs: 0, travels: 0, log: [],
       trainDay: -1, treasures: 0, raidWins: 0, transit: null, friends: {}, emote: null,
       bdayParty: -1, contestWins: 0,
@@ -344,6 +347,7 @@ export class Sim {
 
   // 行動を設定 (dest があれば歩いてから dur 分)
   setAct(c, cat, label, dur, dest, kind = 'idle', data = null, walkLabel = null) {
+    if (SCALED_KINDS.has(kind) && cat !== 'event' && cat !== 'raid' && Number.isFinite(dur)) dur *= ACT_SCALE;
     c.act = { cat, label, dur, until: this.t + dur, kind, data, walkLabel };
     if (dest && dist2(c.x, c.z, dest.x, dest.z) > 0.25) {
       c.dest = { x: dest.x, z: dest.z };
