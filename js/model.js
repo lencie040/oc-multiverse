@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=24';
-import { themeOf } from './themes.js?v=24';
+import { seeded, hashStr } from './util.js?v=25';
+import { themeOf } from './themes.js?v=25';
 
 export const LEVEL = 50;
 export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限
@@ -37,7 +37,7 @@ export function buildModel(raw) {
     w.danger = Math.min(w.num, MAX_DANGER);
     w.geo = buildGeo(w, worlds);
   }
-  return { worlds, chars, charById: new Map(chars.map((c) => [c.id, c])), dans, danById };
+  return { worlds, chars, charById: new Map(chars.map((c) => [c.id, c])), dans, danById, types: raw.types };
 }
 
 // 汎異記号の1文字目が同じ世界線を近くに配置し、近いもの同士を「隣」にする

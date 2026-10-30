@@ -62,16 +62,22 @@ export function luminance(hex) {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
-// 時間: 1日 = 現実の20分
+// 時間: 現実の時計と同じ。t = 2026年1月1日 0:00 (端末の時刻) からの分
 export const MIN_PER_DAY = 1440;
-export const REAL_SEC_PER_GAME_MIN = (20 * 60) / MIN_PER_DAY;
+const EPOCH = new Date(2026, 0, 1).getTime();
+export const nowGameT = () => (Date.now() - EPOCH) / 60000;
+export function dateOfDay(day) {
+  const d = new Date(2026, 0, 1 + day);
+  return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
+}
 
 export function fmtTime(t) {
-  const day = Math.floor(t / MIN_PER_DAY) + 1;
-  const m = Math.floor(t % MIN_PER_DAY);
+  const day = Math.floor(t / MIN_PER_DAY);
+  const { m: mo, d } = dateOfDay(day);
+  const m = Math.floor(t - day * MIN_PER_DAY);
   const hh = String(Math.floor(m / 60)).padStart(2, '0');
   const mm = String(m % 60).padStart(2, '0');
-  return { day, hh, mm, text: `${day}日目 ${hh}:${mm}` };
+  return { day, date: `${mo}/${d}`, hh, mm, text: `${mo}/${d} ${hh}:${mm}` };
 }
 
 export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif';

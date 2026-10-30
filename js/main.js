@@ -1,30 +1,31 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=24';
-import { Sim } from './sim.js?v=24';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=24';
-import { UI } from './ui.js?v=24';
-import { Director } from './director.js?v=24';
-import { Sound, moodOf } from './audio.js?v=24';
-import { REAL_SEC_PER_GAME_MIN } from './util.js?v=24';
+import { buildModel } from './model.js?v=25';
+import { Sim } from './sim.js?v=25';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=25';
+import { UI } from './ui.js?v=25';
+import { Director } from './director.js?v=25';
+import { Sound, moodOf } from './audio.js?v=25';
+import { MIN_PER_DAY, nowGameT } from './util.js?v=25';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=24').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=25').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     try {
       const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
       if (s && !this.sim.restore(s)) console.info('保存データが古いため新しく始めます');
     } catch (e) { /* 保存データなし */ }
+    // 閉じていた間の出来事を進めて、現実の時刻に追いつく
+    this.sim.catchUp();
 
     this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true };
     this.sound = new Sound();
     this.sim.listen((e) => this.eventSound(e));
-    this.speed = 1;
     this.keys = {};
     this.selected = null;
     this.following = false;
@@ -138,10 +139,6 @@ class App {
     this.following = false;
     if (this.ui) this.ui.lastInfo = '';
   }
-  setSpeed(s) {
-    this.speed = s;
-    for (const b of document.querySelectorAll('#speed button')) b.classList.toggle('on', Number(b.dataset.s) === s);
-  }
 
   // ---------- 入力 ----------
   bindInput() {
@@ -168,7 +165,6 @@ class App {
       if (this.director.on && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Escape'].includes(e.code)) this.director.toggle(false);
       if (e.code === 'Escape') { if (this.selected) this.selectChar(null); else this.goUp(); }
       else if (e.code === 'Slash') { e.preventDefault(); document.getElementById('search').focus(); }
-      else if (e.code === 'KeyP') this.setSpeed(this.speed === 0 ? 1 : 0);
       else if (e.code === 'KeyT') this.toggleFollow();
       else if (e.code === 'KeyO') this.director.toggle();
       else if (e.code === 'KeyM') this.ui.toggleMute();
@@ -204,10 +200,11 @@ class App {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
-    // 追跡中のキャラが移動している間は、見逃さないよう最大×2に抑える
-    const sel = this.following && this.selected && this.model.charById.get(this.selected);
-    const speed = sel && this.sim.transitOf(sel) ? Math.min(this.speed, 2) : this.speed;
-    if (speed) this.sim.update((dt / REAL_SEC_PER_GAME_MIN) * speed);
+    // 現実の時計に合わせて進める。タブを隠していた間の遅れは、通知 (音・カメラ・テロップ) なしで少しずつ追いつく
+    const gap = nowGameT() - this.sim.t;
+    if (gap > 2 * MIN_PER_DAY) this.sim.catchUp();
+    else if (gap > 1) { this.sim.quiet = true; this.sim.update(Math.min(gap, 30)); this.sim.quiet = false; }
+    else if (gap > 0) this.sim.update(gap);
     this.view.update(dt);
     this.ui.tick(dt);
     this.director.tick();

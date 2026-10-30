@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=24';
-import { prioOf } from './director.js?v=24';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=24';
-import { typeSummary, TYPE_COLOR } from './types.js?v=24';
+import { CATS } from './sim.js?v=25';
+import { prioOf } from './director.js?v=25';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=25';
+import { typeSummary, TYPE_COLOR } from './types.js?v=25';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -14,10 +14,6 @@ export class UI {
     this.infoT = 0;
     this.lastInfo = '';
 
-    $('#speed').addEventListener('click', (e) => {
-      const b = e.target.closest('button');
-      if (b) app.setSpeed(Number(b.dataset.s));
-    });
     $('#tg-names').addEventListener('change', (e) => { app.settings.names = e.target.checked; });
     $('#tg-wnames').addEventListener('change', (e) => {
       app.settings.worldNames = e.target.checked;
@@ -122,7 +118,7 @@ export class UI {
     const tm = fmtTime(sim.t);
     const h = sim.hour;
     $('#clk-icon').textContent = h >= 22 || h < 5 ? '🌙' : h < 7 ? '🌅' : h < 17.5 ? '☀️' : h < 20 ? '🌇' : '🌙';
-    $('#clk-text').textContent = `${sim.dateLabel()}（${tm.day}日目） ${tm.hh}:${tm.mm}`;
+    $('#clk-text').textContent = `${sim.dateLabel()} ${tm.hh}:${tm.mm}`;
     const tr = this.app.sound.trackName;
     if (tr !== this.lastTrack) { $('#track').textContent = tr; this.lastTrack = tr; }
     const rep = this.app.sim.report;
@@ -140,7 +136,7 @@ export class UI {
   evHtml(e) {
     const tm = fmtTime(e.t);
     return `<div class="ev${e.major ? '' : ' minor-ev'}" data-w="${escapeHtml(e.world)}" ${e.ids[0] ? `data-c="${escapeHtml(e.ids[0])}"` : ''}>`
-      + `<time>${tm.day}日目 ${tm.hh}:${tm.mm}</time>${this.wchip(e.world)}${escapeHtml(e.text)}</div>`;
+      + `<time>${tm.date} ${tm.hh}:${tm.mm}</time>${this.wchip(e.world)}${escapeHtml(e.text)}</div>`;
   }
   renderEvents() {
     const list = this.app.sim.events.filter((e) => this.evMatch(e)).slice(-150).reverse();
@@ -217,7 +213,7 @@ export class UI {
       : r.mvp.length ? `魔物退治のMVPは${r.mvp[0].name}（${r.mvp[0].n}体）` : '今日も多元宇宙は平和でした';
     const li = (arr, f) => arr.length ? `<ul>${arr.map((x) => `<li>${f(x)}</li>`).join('')}</ul>` : '<ul><li>なし</li></ul>';
     box.innerHTML = `<div class="paper"><button class="x" title="閉じる">×</button>`
-      + `<div class="mast"><h1>多元日報</h1><small>${this.app.sim.dateLabel(r.day)}（${r.day + 1}日目）の出来事（朝6時〜翌朝6時）</small></div>`
+      + `<div class="mast"><h1>多元日報</h1><small>${this.app.sim.dateLabel(r.day)}の出来事（朝6時〜翌朝6時）</small></div>`
       + `<div class="head">${escapeHtml(head)}</div>`
       + `<div class="nums"><div><b>${r.battles}</b><span>魔物退治</span></div><div><b>${r.downs}</b><span>気絶</span></div><div><b>${r.travels}</b><span>世界線移動</span></div><div><b>${r.camps}</b><span>野宿</span></div><div><b>${r.duels}</b><span>撃退騒ぎ</span></div><div><b>${r.meets || 0}</b><span>勢力の集まり</span></div></div>`
       + `<h4>⚔️ 魔物退治MVP</h4>${li(r.mvp, (m, i) => `${escapeHtml(m.name)} … ${m.n}体`)}`
@@ -376,7 +372,7 @@ export class UI {
       }).join('')}</div>`
       + this.rankings()
       + `<h3>旅をしているキャラ</h3><div class="list">${model.chars.filter((c) => c.trip && !c.partyLeader).map((c) => this.charRow(c, this.whereChip(c))).join('') || '<div class="sub">今はいません</div>'}</div>`
-      + `<h3>ルール</h3><div class="mlog">1日 = 現実の20分。全員Lv50。世界線の移動には移動ptを使います（汎異記号の1文字目が同じ世界線へは1pt、違う世界線へは5pt、世界団の移動は40pt。仲間を連れていくと人数分）。ptはランク7で2日に1pt、ランク8で1日3pt、9で7pt、10で15pt、11で40ptたまり、3日分までためられます。世界団を越えられるのはランク11以上で、その日は力が半減します。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。魔物やレイドボスにもタイプがあり、相性がいいと戦闘力が上がります。誕生日には夕方に友達が集まってパーティーをし、勢力は本拠地で集会や合同訓練、ほかの勢力との対抗戦を開きます。</div>`;
+      + `<h3>ルール</h3><div class="mlog">時間は現実の時計と同じように流れます（全員がブラウザを閉じている間の出来事も、次に開いたときに最大2日分さかのぼって進みます）。全員Lv50。世界線の移動には移動ptを使います（汎異記号の1文字目が同じ世界線へは1pt、違う世界線へは5pt、世界団の移動は40pt。仲間を連れていくと人数分）。ptはランク7で2日に1pt、ランク8で1日3pt、9で7pt、10で15pt、11で40ptたまり、3日分までためられます。世界団を越えられるのはランク11以上で、その日は力が半減します。汎異記号の数字が大きい世界線ほど魔物が多く、魔物に負けると朝まで倒れます。汎異記号の数字が20以上の世界線にはまれにレイドボスが現れ、その世界線にいるキャラと隣の世界線のランク9以上が集まってみんなで戦います（勝っても負けてもボスは消滅）。魔物やレイドボスにもタイプがあり、相性がいいと戦闘力が上がります。誕生日には夕方に友達が集まってパーティーをし、勢力は本拠地で集会や合同訓練、ほかの勢力との対抗戦を開きます。</div>`;
   }
 
   danInfo(d) {
@@ -464,6 +460,6 @@ export class UI {
       + `<span>記録</span><span>魔物退治 ${c.kills} ・ レイド勝利 ${c.raidWins} ・ 気絶 ${c.downs} ・ 移動 ${c.travels} ・ 発見した宝物 ${c.treasures} ・ 対抗戦の勝利 ${c.contestWins}</span></div>`
       + this.friendList(c)
       + `<h3>種族値</h3><div class="bars">${c.stats.map((v, i) => `<span>${STAT_NAMES[i]}</span><span class="b"><i style="width:${Math.min(100, (v / maxStat) * 100)}%"></i></span><span>${v}</span>`).join('')}</div>`
-      + `<h3>最近の出来事</h3><div class="mlog">${c.log.slice().reverse().map((e) => { const t = fmtTime(e.t); return `<div>${t.day}日目 ${t.hh}:${t.mm} ${escapeHtml(e.text)}</div>`; }).join('') || 'まだありません'}</div>`;
+      + `<h3>最近の出来事</h3><div class="mlog">${c.log.slice().reverse().map((e) => { const t = fmtTime(e.t); return `<div>${t.date} ${t.hh}:${t.mm} ${escapeHtml(e.text)}</div>`; }).join('') || 'まだありません'}</div>`;
   }
 }

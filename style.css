@@ -27,9 +27,6 @@ button { font-family: inherit; }
 #crumbs a.cur { background: rgba(255, 225, 74, .18); color: var(--accent); }
 #crumbs .sep { color: var(--muted); }
 #clock { display: flex; gap: 6px; align-items: center; font-size: 15px; padding: 0 6px; white-space: nowrap; }
-#speed { display: flex; border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
-#speed button { background: transparent; color: var(--muted); border: 0; padding: 5px 9px; cursor: pointer; }
-#speed button.on { background: var(--accent); color: #222; font-weight: 800; }
 #searchbox { position: relative; }
 #search { width: 230px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.07); color: var(--text); font-family: inherit; outline: none; }
 #search:focus { border-color: var(--accent); }

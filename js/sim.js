@@ -1,7 +1,7 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY } from './util.js?v=24';
-import { randomWild, randomTown, hopCost, cheapestPath } from './model.js?v=24';
-import { splitTypes, edge, edgeNote, monsterType } from './types.js?v=24';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=25';
+import { randomWild, randomTown, hopCost, cheapestPath } from './model.js?v=25';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=25';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -33,10 +33,6 @@ const HELP = ['荷物運びを手伝う', '近所の掃除を手伝う', '畑を
 const TREASURES = ['古いコイン', 'きれいな石', '謎の地図', '化石', '光る羽根', '古びた鍵', '小さな宝石', '壊れた時計', '不思議な種'];
 const RARE = ['伝説の剣のかけら', '星の涙', '虹色の宝玉', '古代の王冠'];
 const RAID_TITLE = [['巨竜', '竜'], ['魔王', '悪'], ['大蛇', '毒'], ['鉄巨人', '鋼'], ['黒獅子', '闇'], ['亡霊王', '霊'], ['大怪鳥', '飛'], ['深淵の主', '水']];
-// カレンダー (うるう年なし)。シミュレーション0日目 = 初めて開いた日の日付
-const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-const doyOf = (m, d) => MONTH_DAYS.slice(0, m - 1).reduce((a, b) => a + b, 0) + Math.min(d, MONTH_DAYS[m - 1]) - 1;
-const todayDoy = () => { const n = new Date(); return doyOf(n.getMonth() + 1, n.getDate()); };
 const GIFTS = ['手作りケーキ', '花束', 'マフラー', 'ぬいぐるみ', '手紙', 'お菓子の詰め合わせ', '似顔絵', 'キラキラの石', '新しい本', 'おそろいのキーホルダー'];
 // 勢力の催し。名前から種類を決める
 const MEET_KINDS = {
@@ -64,13 +60,14 @@ const EMOTES = {
 };
 const FRIEND = 10, BEST = 25; // 友達・親友になる友好度 // 1ゲーム分あたりの出現率 (昼のみ)
 
-const WALK_SPEED = 2.4; // 1ゲーム分あたりの移動距離
+const WALK_SPEED = 60; // 1分あたりの移動距離 (現実と同じ時間の流れで、歩く様子が見える速さ)
 const MAX_EVENTS = 500;
 
 export class Sim {
   constructor(model) {
     this.m = model;
-    this.t = 6 * 60;
+    loadTypeChart(model.types);
+    this.t = nowGameT();
     this.lastMorning = -1;
     this.events = [];
     this.listeners = [];
@@ -85,7 +82,6 @@ export class Sim {
     this.parties = []; // 誕生日パーティー
     this.meets = []; // 勢力の集会・合同訓練
     this.contests = []; // 勢力対抗戦
-    this.calStart = todayDoy();
     this.nextEventId = 1;
     this.nextRaidId = 1;
     for (const w of model.worlds.values()) {
@@ -98,9 +94,9 @@ export class Sim {
     // 誕生日の早見表と、勢力 (本拠地 = いちばん多く住んでいる世界線)
     this.bdays = new Map();
     for (const c of model.chars) {
-      if (c.bdDoy == null) continue;
-      if (!this.bdays.has(c.bdDoy)) this.bdays.set(c.bdDoy, []);
-      this.bdays.get(c.bdDoy).push(c);
+      if (!c.bdKey) continue;
+      if (!this.bdays.has(c.bdKey)) this.bdays.set(c.bdKey, []);
+      this.bdays.get(c.bdKey).push(c);
     }
     const fs = new Map();
     for (const c of model.chars) if (c.seiryoku) { if (!fs.has(c.seiryoku)) fs.set(c.seiryoku, []); fs.get(c.seiryoku).push(c); }
@@ -129,7 +125,7 @@ export class Sim {
     });
     c.types = splitTypes(c.type);
     const bd = /(\d+)月(\d+)日/.exec(c.birthday || '');
-    c.bdDoy = bd && +bd[1] >= 1 && +bd[1] <= 12 ? doyOf(+bd[1], +bd[2]) : null;
+    c.bdKey = bd ? `${+bd[1]}-${+bd[2]}` : null;
     c.pts = this.ptRate(c);
     const th = this.m.worlds.get(c.home).theme;
     const hb = new Set();
@@ -147,15 +143,15 @@ export class Sim {
     return (this.hour < 6 ? this.day : this.day + 1) * MIN_PER_DAY + 360;
   }
   nightKey() { return this.hour < 12 ? this.day - 1 : this.day; }
-  doy(day = this.day) { return (((this.calStart + day) % 365) + 365) % 365; }
-  dateOf(day = this.day) {
-    let d = this.doy(day), m = 0;
-    while (d >= MONTH_DAYS[m]) d -= MONTH_DAYS[m++];
-    return { m: m + 1, d: d + 1 };
+  dateLabel(day = this.day) { const { m, d } = dateOfDay(day); return `${m}月${d}日`; }
+  // うるう年でない年の2月29日生まれは、2月28日にお祝いする
+  bdKeysOn(day) {
+    const { y, m, d } = dateOfDay(day);
+    const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+    return m === 2 && d === 28 && !leap ? ['2-28', '2-29'] : [`${m}-${d}`];
   }
-  dateLabel(day = this.day) { const { m, d } = this.dateOf(day); return `${m}月${d}日`; }
-  isBirthday(c) { return c.bdDoy === this.doy(); }
-  birthdaysOn(day = this.day) { return this.bdays.get(this.doy(day)) || []; }
+  isBirthday(c) { return !!c.bdKey && this.bdKeysOn(this.day).includes(c.bdKey); }
+  birthdaysOn(day = this.day) { return this.bdKeysOn(day).flatMap((k) => this.bdays.get(k) || []); }
 
   wname(id) { return this.m.worlds.get(id)?.name ?? id; }
   // 世界団移動の日は半減、修行した日は1割増し
@@ -186,9 +182,10 @@ export class Sim {
       const c = this.m.charById.get(id);
       if (c) { c.log.push(e); if (c.log.length > 30) c.log.shift(); }
     }
-    for (const f of this.listeners) f(e);
+    if (!this.quiet) for (const f of this.listeners) f(e);
   }
-  say(c, text, dur = 25) { c.bubble = { text, until: this.t + dur }; }
+  // 吹き出しは dur×1.2秒ほど表示する
+  say(c, text, dur = 25) { c.bubble = { text, until: this.t + dur * 0.02 }; }
   emote(c, e) { c.emote = { e, n: (c.emote?.n || 0) + 1 }; }
 
   // ---------- 友好度 ----------
@@ -245,9 +242,9 @@ export class Sim {
         if (mo.horde) { this.marchHorde(w, mo, dt); continue; }
         const d = Math.sqrt(dist2(mo.x, mo.z, mo.tx, mo.tz));
         if (d < 0.5) {
-          if (chance(0.02 * dt)) { const p = randomWild(w.geo); mo.tx = p.x; mo.tz = p.z; }
+          if (chance(0.1 * dt)) { const p = randomWild(w.geo); mo.tx = p.x; mo.tz = p.z; }
         } else {
-          const s = Math.min(d, 0.7 * dt);
+          const s = Math.min(d, 15 * dt);
           mo.x += ((mo.tx - mo.x) / d) * s; mo.z += ((mo.tz - mo.z) / d) * s;
         }
       }
@@ -268,7 +265,19 @@ export class Sim {
       this.updateEvents(step);
       for (const c of this.m.chars) this.updateChar(c, step);
     }
-    this.effects = this.effects.filter((e) => this.t - e.t < 40);
+    this.effects = this.effects.filter((e) => this.t - e.t < 3);
+  }
+
+  // 閉じていた間の時間を進める。長すぎる分 (max より前) は飛ばす
+  catchUp(target = nowGameT(), max = 2 * MIN_PER_DAY) {
+    if (target - this.t > max) {
+      this.t = target - max;
+      this.meets = this.meets.filter((m) => m.started);
+      this.contests = this.contests.filter((c) => c.started);
+    }
+    this.quiet = true;
+    if (target > this.t) this.update(target - this.t);
+    this.quiet = false;
   }
 
   morning() {
@@ -554,7 +563,7 @@ export class Sim {
       this.effects.push({ t: this.t, world: w.id, x: mo.x, z: mo.z, kind: 'portal' });
       return;
     }
-    const s = Math.min(d, 1.8 * dt);
+    const s = Math.min(d, 20 * dt);
     mo.x -= (mo.x / d) * s; mo.z -= (mo.z / d) * s;
   }
   defendStep(c, dt) {
@@ -799,7 +808,7 @@ export class Sim {
     const day0 = this.day * MIN_PER_DAY;
     for (const f of this.factions) {
       if (!chance(0.2) || this.meets.some((m) => m.faction === f.name)) continue;
-      this.meets.push({ id: this.nextEventId++, faction: f.name, kind: f.kind, world: f.hq, start: day0 + rand(9.5, 15) * 60, dur: rand(60, 100), started: false });
+      this.meets.push({ id: this.nextEventId++, faction: f.name, kind: f.kind, world: f.hq, start: Math.max(day0 + rand(9.5, 15) * 60, this.t + rand(10, 120)), dur: rand(60, 100), started: false });
     }
     if (this.contests.length || !chance(0.5)) return;
     const byWorld = {};
@@ -808,7 +817,7 @@ export class Sim {
     const pickW = weighted(ws.map(([w, fs]) => [w, fs.length]));
     if (!pickW) return;
     const fs = [...byWorld[pickW]].sort(() => Math.random() - 0.5);
-    this.contests.push({ id: this.nextEventId++, world: pickW, a: fs[0].name, b: fs[1].name, game: pick(CONTESTS).name, start: day0 + rand(13, 16) * 60, started: false });
+    this.contests.push({ id: this.nextEventId++, world: pickW, a: fs[0].name, b: fs[1].name, game: pick(CONTESTS).name, start: Math.max(day0 + rand(13, 16) * 60, this.t + rand(20, 90)), started: false });
   }
   factionMembers(name, world, max = Infinity) {
     const f = this.factions.find((x) => x.name === name);
@@ -1507,7 +1516,7 @@ export class Sim {
     return {
       v: 1, t: this.t, lastMorning: this.lastMorning, nextMonsterId: this.nextMonsterId,
       raids: this.raids, nextRaidId: this.nextRaidId, hordes: this.hordes, races: this.races, repair: this.repair, nextEventId: this.nextEventId,
-      parties: this.parties, meets: this.meets, contests: this.contests, calStart: this.calStart, daily: this.daily, report: this.report,
+      parties: this.parties, meets: this.meets, contests: this.contests, clock: 'real', daily: this.daily, report: this.report,
       monsters: Object.fromEntries(this.monsters),
       events: this.events.slice(-200),
       chars: this.m.chars.map((c) => [c.id, Object.fromEntries(keys.map((k) => [k, c[k] === Infinity ? 'INF' : c[k]]))]),
@@ -1517,6 +1526,14 @@ export class Sim {
     if (!s || s.v !== 1) return false;
     const map = new Map(s.chars);
     if (map.size !== this.m.chars.length || this.m.chars.some((c) => !map.has(c.id) || !(this.m.worlds.has(map.get(c.id).world) || map.get(c.id).world === TRANSIT))) return false;
+    if (s.clock !== 'real') {
+      // 1日20分だったころの保存データ: 時刻が合わないので、記録と友好度だけ引き継いで今の時刻から始める
+      for (const c of this.m.chars) {
+        const d = map.get(c.id);
+        for (const k of ['kills', 'downs', 'travels', 'treasures', 'raidWins', 'contestWins', 'friends']) if (d[k] != null) c[k] = d[k];
+      }
+      return true;
+    }
     this.t = s.t; this.lastMorning = s.lastMorning; this.nextMonsterId = s.nextMonsterId;
     for (const [wid, list] of Object.entries(s.monsters)) {
       const w = this.m.worlds.get(wid);
@@ -1535,8 +1552,6 @@ export class Sim {
     this.parties = (s.parties || []).filter((p) => this.m.worlds.has(p.world));
     this.meets = (s.meets || []).filter((p) => this.m.worlds.has(p.world));
     this.contests = (s.contests || []).filter((p) => this.m.worlds.has(p.world));
-    // 古い保存データ: 今日の日付が「いまの日」になるようにカレンダーを合わせる
-    this.calStart = s.calStart ?? (((todayDoy() - Math.floor(s.t / MIN_PER_DAY)) % 365) + 365) % 365;
     for (const [wid, list] of this.monsters) for (const mo of list) mo.type ??= monsterType(this.m.worlds.get(wid));
     this.hordes = (s.hordes || []).filter((h) => this.m.worlds.has(h.world));
     this.races = (s.races || []).filter((r) => this.m.worlds.has(r.world));

@@ -7,7 +7,7 @@
 import csv, io, json, os, re, shutil, sys, urllib.request
 
 SHEET = "1v2nMhZftw4EIEVcpOMluSK8nlz62roy7OMkh23AyvE4"
-CHAR_GID, MAP_GID = "0", "1517354738"
+CHAR_GID, MAP_GID, TYPE_GID = "0", "1517354738", "1535860723"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ILLUST = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "..", "illust")
 
@@ -16,6 +16,23 @@ def fetch(gid):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET}/export?format=csv&gid={gid}"
     with urllib.request.urlopen(url) as r:
         return list(csv.reader(io.StringIO(r.read().decode("utf-8"))))
+
+
+def type_chart():
+    """タイプ相性表 (行=攻撃側, 列=防御側)。等倍以外だけを残す"""
+    rows = fetch(TYPE_GID)
+    defs = [x.strip() for x in rows[0][1:]]
+    chart = {}
+    for r in rows[1:]:
+        if not r or not r[0].strip():
+            continue
+        m = {}
+        for d, v in zip(defs, r[1:]):
+            v = v.strip()
+            if d and v and float(v) != 1:
+                m[d] = float(v)
+        chart[r[0].strip()] = m
+    return {"types": defs, "chart": chart}
 
 
 # キャラがいない等でシートから世界団を決められない世界線の指定
@@ -88,6 +105,7 @@ def main():
         "dans": [{"id": d, "yomi": dans.get(d, "")} for d in dans if d in used],
         "worlds": list(worlds.values()),
         "chars": chars,
+        "types": type_chart(),
     }
     with open(os.path.join(ROOT, "data", "data.json"), "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
