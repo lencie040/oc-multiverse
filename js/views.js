@@ -2,8 +2,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=28';
-import { TYPE_COLOR } from './types.js?v=28';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=29';
+import { TYPE_COLOR } from './types.js?v=29';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -12,8 +12,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=28';
-import { CATS } from './sim.js?v=28';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=29';
+import { CATS } from './sim.js?v=29';
 
 // グラフィック設定 (低・中・高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -420,7 +420,7 @@ export class ClusterView extends BaseView {
     this.scene.add(starfield(3000, Math.max(900, maxR * 5)));
     this.maxR = maxR;
     this.camera.position.set(0, maxR * 0.6, maxR * 1.1);
-    this.controls.minDistance = 10;
+    this.controls.minDistance = this.ultra ? 2 : 10;
     this.controls.maxDistance = maxR * 5;
     this.bound = maxR * 1.2;
     this.refreshT = 0;
@@ -477,10 +477,39 @@ export class ClusterView extends BaseView {
       return a.clone().lerp(b, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * 20, 0));
     }, 4.5);
     if (this.followTraveler(dt)) return;
+    if (this.ultra) this.updateMiniChars();
+    // 宇宙から観戦: 映したいキャラ・場所を、透けた世界線の中に追いかける
+    const p = this.spaceTarget();
+    if (p) {
+      const tgt = this.controls.target;
+      const far = tgt.distanceTo(p) > 300;
+      const d = p.sub(tgt).multiplyScalar(far ? 1 : Math.min(1, dt * 4));
+      tgt.add(d);
+      this.camera.position.add(d);
+    }
     super.update(dt);
     if ((this.refreshT -= dt) < 0) { this.refresh(); this.refreshT = 0.5; }
     for (const n of this.nodes.values()) n.g.rotation.y += dt * (this.ultra ? 0.05 : 0.2);
-    if (this.ultra) this.updateMiniChars();
+  }
+  spaceTarget() {
+    const { app } = this;
+    if (!this.ultra || !app.spaceWatch) return null;
+    const c = app.selected && app.model.charById.get(app.selected);
+    if (c && !app.sim.transitOf(c)) {
+      const sp = this.miniChars.get(c.id);
+      if (sp?.parent) return sp.getWorldPosition(new THREE.Vector3());
+    }
+    const n = this.watch && this.nodes.get(this.watch.world);
+    return n ? n.mini.localToWorld(new THREE.Vector3(this.watch.x, 0, this.watch.z)) : null;
+  }
+  // 宇宙から観戦中のカメラの距離: キャラなら球の近く、場所なら球全体が入るくらい
+  spaceShot() {
+    const { app } = this;
+    const c = app.selected && app.model.charById.get(app.selected);
+    const wid = c && !app.sim.transitOf(c) ? c.world : this.watch?.world;
+    const n = wid && this.nodes.get(wid);
+    if (!n) return null;
+    return c && wid === c.world ? { dist: n.r * 1.1, elev: 0.55, orbit: 0.08 } : { dist: n.r * 2.4, elev: 0.75, orbit: 0.06 };
   }
   // 世界線の中にいるキャラを、小さな島の上に映す
   updateMiniChars() {

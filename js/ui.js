@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=28';
-import { prioOf } from './director.js?v=28';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=28';
-import { typeSummary, TYPE_COLOR } from './types.js?v=28';
+import { CATS } from './sim.js?v=29';
+import { prioOf } from './director.js?v=29';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=29';
+import { typeSummary, TYPE_COLOR } from './types.js?v=29';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -30,6 +30,8 @@ export class UI {
     uiV();
     $('#set-ui').addEventListener('input', (e) => { app.setSetting('ui', e.target.value / 100); uiV(); });
     $('#tg-director').addEventListener('click', () => app.director.toggle());
+    $('#tg-space').addEventListener('click', () => app.toggleSpaceWatch());
+    this.syncSpaceBtn();
     $('#tg-news').addEventListener('click', () => this.showNews(true));
     $('#tg-toast').addEventListener('change', (e) => { app.settings.toasts = e.target.checked; });
     $('#news').addEventListener('click', (e) => { if (e.target.id === 'news' || e.target.closest('.x')) $('#news').hidden = true; });
@@ -323,6 +325,13 @@ export class UI {
       + ps.map((p) => `<div class="raidbox fest" data-w="${escapeHtml(p.world)}">${this.wchip(p.world)}<b>🎂 ${p.hosts.map(nm).join('・')}の誕生日パーティー</b><small>お祝いに来た人 ${p.guests.length}人</small></div>`).join('')
       + cs.map((c) => `<div class="raidbox fest" data-w="${escapeHtml(c.world)}">${this.wchip(c.world)}<b>🚩 勢力対抗「${escapeHtml(c.game)}」</b><small>「${escapeHtml(c.a)}」vs「${escapeHtml(c.b)}」</small></div>`).join('')
       + ms.map((m) => `<div class="raidbox fest" data-w="${escapeHtml(m.world)}">${this.wchip(m.world)}<b>${m.kind === 'drill' ? '🎖️' : '📯'} 「${escapeHtml(m.faction)}」の${m.kind === 'drill' ? '合同訓練' : m.kind === 'market' ? '商談会' : '集会'}</b><small>${m.members.length}人参加</small></div>`).join('');
+  }
+
+  // 「宇宙から観戦」ボタンはグラフィック最高の時だけ出す
+  syncSpaceBtn() {
+    const { settings } = this.app;
+    $('#tg-space').hidden = settings.gfx !== 'ultra';
+    $('#tg-space').classList.toggle('on', !!settings.spaceWatch && settings.gfx === 'ultra');
   }
 
   // 今日と、これから1週間の誕生日

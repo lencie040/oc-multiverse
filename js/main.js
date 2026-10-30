@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=28';
-import { Sim } from './sim.js?v=28';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=28';
-import { UI } from './ui.js?v=28';
-import { Director } from './director.js?v=28';
-import { Sound, moodOf } from './audio.js?v=28';
-import { MIN_PER_DAY, nowGameT } from './util.js?v=28';
-import { Sync } from './sync.js?v=28';
+import { buildModel } from './model.js?v=29';
+import { Sim } from './sim.js?v=29';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=29';
+import { UI } from './ui.js?v=29';
+import { Director } from './director.js?v=29';
+import { Sound, moodOf } from './audio.js?v=29';
+import { MIN_PER_DAY, nowGameT } from './util.js?v=29';
+import { Sync } from './sync.js?v=29';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -17,7 +17,7 @@ const PIXEL_RATIO = { low: 0.75, mid: 1, high: 2, ultra: 2 };
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=28').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=29').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -72,15 +72,40 @@ class App {
   // 設定を変えて保存する。グラフィックが変わったら今の画面を作り直す
   setSetting(k, v) {
     this.settings[k] = v;
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ gfx: this.settings.gfx, ui: this.settings.ui })); } catch (e) { /* 保存できない環境 */ }
+    this.saveSettings();
     if (k === 'ui') document.documentElement.style.setProperty('--ui', v);
     if (k === 'gfx') {
       this.renderer.setPixelRatio(Math.min(devicePixelRatio, PIXEL_RATIO[v] ?? 2));
       const keep = { keepFollow: true };
       const cur = this.view;
       if (cur.kind === 'world') { this.view = null; cur.dispose(); this.openWorld(cur.worldId, keep); }
-      else if (cur.kind === 'dan') this.openDan(cur.danId, keep);
+      else if (cur.kind === 'dan') { this.view = null; cur.dispose(); this.openDan(cur.danId, keep); }
       else this.goUniverse(keep);
+      this.ui.syncSpaceBtn();
+      if (this.director.on) this.director.pickIdle();
+    }
+  }
+  saveSettings() {
+    const { gfx, ui, spaceWatch } = this.settings;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ gfx, ui, spaceWatch })); } catch (e) { /* 保存できない環境 */ }
+  }
+  // 最高設定の「宇宙から観戦」: おまかせ観戦で世界線の中に入らず、世界団マップから透けた世界線を映す
+  get spaceWatch() { return !!(this.director?.on && this.settings.gfx === 'ultra' && this.settings.spaceWatch); }
+  toggleSpaceWatch() {
+    this.settings.spaceWatch = !this.settings.spaceWatch;
+    this.saveSettings();
+    this.ui.syncSpaceBtn();
+    if (this.settings.spaceWatch && !this.director.on) this.director.toggle(true);
+    else if (this.director.on) this.director.pickIdle();
+  }
+  // 世界線のある場所 (x, z) を映す。宇宙から観戦中なら世界団マップから
+  watchWorld(wid, x = 0, z = 0, dist = 70) {
+    if (this.spaceWatch) {
+      this.openDan(this.model.worlds.get(wid).dan, { keepFollow: true });
+      this.view.watch = { world: wid, x, z };
+    } else {
+      this.openWorld(wid);
+      this.view.focusOn(x, z, dist);
     }
   }
 
@@ -105,11 +130,17 @@ class App {
   }
   openDan(id, opts = {}) {
     if (!opts.keepFollow) this.stopFollow();
-    this.setView(new ClusterView(this, id), `#/dan/${encodeURIComponent(id)}`);
+    if (this.view?.kind !== 'dan' || this.view.danId !== id) this.setView(new ClusterView(this, id), `#/dan/${encodeURIComponent(id)}`);
+    this.view.watch = null;
   }
   // キャラのいる場所を映す: 世界線にいれば世界線、移動中なら世界団マップか宇宙マップ
   // 追跡中の移動は「出発の世界線で飛び立つ → マップ上を飛ぶ → 到着の世界線に降りる」の3場面で映す
   viewFor(c) {
+    const v = this.placeOf(c);
+    // 宇宙から観戦中は、世界線の中も世界団マップから映す
+    return v.kind === 'world' && this.spaceWatch ? { kind: 'dan', id: this.model.worlds.get(v.id).dan } : v;
+  }
+  placeOf(c) {
     const tr = this.sim.transitOf(c);
     if (!tr) return { kind: 'world', id: c.world };
     const { stage } = this.sim.transitStage(tr);

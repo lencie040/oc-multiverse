@@ -1,5 +1,5 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=28';
+import { weighted } from './util.js?v=29';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
@@ -75,9 +75,8 @@ export class Director {
     } else {
       app.stopFollow();
       app.selectChar(null);
-      app.openWorld(e.world);
-      if (raid) app.view.focusOn(raid.x, raid.z, 70);
-      else if (app.sim.hordeAt(e.world)) app.view.focusOn(0, 0, 80);
+      if (raid) app.watchWorld(e.world, raid.x, raid.z, 70);
+      else app.watchWorld(e.world, 0, 0, 80);
     }
     this.prio = p;
     this.until = now() + (p >= 80 ? 18 : 12);
@@ -108,8 +107,7 @@ export class Director {
       const ids = raid.participants.filter((id) => model.charById.get(id).world === raid.world);
       app.stopFollow();
       app.selectChar(null);
-      app.openWorld(raid.world);
-      app.view.focusOn(raid.x, raid.z, ids.length ? 55 : 70);
+      app.watchWorld(raid.world, raid.x, raid.z, ids.length ? 55 : 70);
       this.newTake(raid.id);
       this.prio = 90;
       this.until = now() + 15;
@@ -164,7 +162,7 @@ export class Director {
     const v = app.view;
     let base;
     if (v.kind === 'universe') base = SHOTS.universe;
-    else if (v.kind === 'dan') base = SHOTS.transit;
+    else if (v.kind === 'dan') base = (app.spaceWatch && v.spaceShot?.()) || SHOTS.transit;
     else if (this.raidId != null && !app.selected) {
       const r = app.sim.raids.find((x) => x.id === this.raidId);
       base = !r ? { ...SHOTS.establish, dist: v.bound * 1.2 } : r.phase === 'fight' ? SHOTS.raidFight : SHOTS.raidGather;
