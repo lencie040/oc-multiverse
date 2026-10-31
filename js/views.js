@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=33';
-import { TYPE_COLOR } from './types.js?v=33';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, batchStatic } from './fx.js?v=33';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=34';
+import { TYPE_COLOR } from './types.js?v=34';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, batchStatic } from './fx.js?v=34';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -13,8 +13,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=33';
-import { CATS } from './sim.js?v=33';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=34';
+import { CATS } from './sim.js?v=34';
 
 // グラフィック設定 (低・中・高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -399,7 +399,7 @@ export class ClusterView extends BaseView {
       // 大気: ふちの光と、外へにじむ光輪
       const air = new THREE.Color(w.theme.sky).lerp(new THREE.Color(w.theme.ground), 0.3).lerp(new THREE.Color('#ffffff'), 0.25);
       g.add(new THREE.Mesh(new THREE.SphereGeometry(r * 1.005, 32, 20), atmosphere(air, { power: 3, k: 1.5 })));
-      const mini = this.ultra ? buildMini(w, model, r) : null;
+      const mini = this.ultra ? buildMini(w, r) : null;
       if (mini) g.add(mini);
       g.add(new THREE.Mesh(new THREE.SphereGeometry(r * 1.3, 24, 16), atmosphere(air, { shell: true, power: 3, k: 0.75 })));
       if (w.danger > 0) {
@@ -419,7 +419,7 @@ export class ClusterView extends BaseView {
       };
       this.scene.add(g);
       this.pickables.push(g);
-      this.nodes.set(wid, { g, lb, w, r, mini, last: '' });
+      this.nodes.set(wid, { g, lb, w, r, mini, detail: null, lod: 0, last: '' });
       maxR = Math.max(maxR, Math.hypot(w.pos.x, w.pos.z) + r);
       for (const nb of w.neighbors) if (nb > wid) {
         const o = model.worlds.get(nb);
@@ -505,8 +505,8 @@ export class ClusterView extends BaseView {
       const k = stage === 'up' ? 0 : f;
       return a.clone().lerp(b, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * 20, 0));
     }, 1);
+    if (this.ultra) { this.updateMiniLod(); this.updateMiniChars(); }
     if (this.followTraveler(dt)) return;
-    if (this.ultra) this.updateMiniChars();
     // 宇宙から観戦: 映したいキャラ・場所を、透けた世界線の中に追いかける
     const p = this.spaceTarget();
     if (p) {
@@ -524,10 +524,8 @@ export class ClusterView extends BaseView {
     const { app } = this;
     if (!this.ultra || !app.spaceWatch) return null;
     const c = app.selected && app.model.charById.get(app.selected);
-    if (c && !app.sim.transitOf(c)) {
-      const sp = this.miniChars.get(c.id);
-      if (sp?.parent) return sp.getWorldPosition(new THREE.Vector3());
-    }
+    // キャラの絵は遠いと出ていないので、居場所は島の座標から求める
+    if (c && !app.sim.transitOf(c) && this.nodes.has(c.world)) return this.nodes.get(c.world).mini.localToWorld(new THREE.Vector3(c.x, 3.5, c.z));
     const n = this.watch && this.nodes.get(this.watch.world);
     return n ? n.mini.localToWorld(new THREE.Vector3(this.watch.x, 0, this.watch.z)) : null;
   }
@@ -540,13 +538,35 @@ export class ClusterView extends BaseView {
     if (!n) return null;
     return c && wid === c.world ? { dist: n.r * 1.1, elev: 0.55, orbit: 0.08 } : { dist: n.r * 2.4, elev: 0.75, orbit: 0.06 };
   }
+  // カメラからの距離で、球の中に映す物を変える (遠い: 地面だけ / 中くらい: 地面とキャラ / 近い: 建物や木も)
+  updateMiniLod() {
+    const cam = this.camera.position;
+    let built = false;
+    for (const n of this.nodes.values()) {
+      const d = cam.distanceTo(n.g.position) / n.r;
+      // 境目で切り替わり続けないよう、下げる時は少し余裕を持たせる
+      const slack = (lod) => (n.lod > lod ? 1.15 : 1);
+      const lod = d < MINI_NEAR * slack(1) ? 2 : d < MINI_MID * slack(0) ? 1 : 0;
+      // 建物の組み立ては1コマに1つだけ (順番に現れるので、止まって見えない)
+      if (lod === 2 && !n.detail) {
+        if (built) continue;
+        built = true;
+        n.detail = buildMiniDetail(n.w, this.app.model);
+        // クリックの判定は外側の球で足りる。細かい形まで調べると、マウスを動かすたびに重くなる
+        n.detail.traverse((m) => { m.raycast = () => {}; });
+        n.mini.add(n.detail);
+      }
+      if (n.detail) n.detail.visible = lod === 2;
+      n.lod = lod;
+    }
+  }
   // 世界線の中にいるキャラを、小さな島の上に映す
   updateMiniChars() {
     const { model } = this.app;
     const seen = new Set();
     for (const c of model.chars) {
       const n = this.nodes.get(c.world);
-      if (!n) continue;
+      if (!n || !n.lod) continue;
       seen.add(c.id);
       let sp = this.miniChars.get(c.id);
       if (!sp) {
@@ -561,12 +581,15 @@ export class ClusterView extends BaseView {
       sp.position.set(c.x, H / 2, c.z);
       sp.material.rotation = c.state === 'sleep' || c.state === 'camp' || c.state === 'down' ? Math.PI / 2 : 0;
     }
-    for (const [id, sp] of this.miniChars) if (!seen.has(id)) { sp.parent?.remove(sp); this.miniChars.delete(id); }
+    for (const [id, sp] of this.miniChars) if (!seen.has(id)) { sp.parent?.remove(sp); sp.material.dispose(); this.miniChars.delete(id); }
   }
 }
 
-// 世界団マップの球の中に置く、世界線の縮小模型 (最高設定)
-function buildMini(w, model, r) {
+// 球の半径の何倍まで近づいたら建物 / キャラを映すか (最高設定)
+const MINI_NEAR = 7, MINI_MID = 26;
+
+// 世界団マップの球の中に置く、世界線の縮小模型の地面 (最高設定)
+function buildMini(w, r) {
   const { geo, theme: th } = w;
   const g = new THREE.Group();
   const ground = new THREE.Color(th.ground);
@@ -579,6 +602,14 @@ function buildMini(w, model, r) {
   under.rotation.x = Math.PI;
   under.position.y = -2 - geo.R * 0.25;
   g.add(under);
+  g.scale.setScalar((r * 0.8) / geo.R);
+  return g;
+}
+
+// 模型の建物や木。近づいた世界線の分だけ組み立てる
+function buildMiniDetail(w, model) {
+  const { geo, theme: th } = w;
+  const g = new THREE.Group();
   const lm = buildProp(th.landmark, null, 0.7);
   lm.scale.setScalar(clamp(geo.plazaR / 4, 1.6, 3));
   g.add(lm);
@@ -605,9 +636,7 @@ function buildMini(w, model, r) {
     o.scale.multiplyScalar(p.s);
     g.add(o);
   }
-  batchStatic(g);
-  g.scale.setScalar((r * 0.8) / geo.R);
-  return g;
+  return batchStatic(g);
 }
 
 // ---------- キャラクターの見た目 ----------

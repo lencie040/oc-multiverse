@@ -1,24 +1,27 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=33';
-import { Sim } from './sim.js?v=33';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=33';
-import { UI } from './ui.js?v=33';
-import { Director } from './director.js?v=33';
-import { Sound, moodOf } from './audio.js?v=33';
-import { MIN_PER_DAY, nowGameT } from './util.js?v=33';
-import { Sync } from './sync.js?v=33';
-import { PostFX } from './fx.js?v=33';
+import { buildModel } from './model.js?v=34';
+import { Sim } from './sim.js?v=34';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=34';
+import { UI } from './ui.js?v=34';
+import { Director } from './director.js?v=34';
+import { Sound, moodOf } from './audio.js?v=34';
+import { MIN_PER_DAY, nowGameT } from './util.js?v=34';
+import { Sync } from './sync.js?v=34';
+import { PostFX } from './fx.js?v=34';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
 // グラフィック設定ごとの描画解像度
 const PIXEL_RATIO = { low: 0.75, mid: 1, high: 1.5, ultra: 2 };
+// 重さのほとんどは描くピクセルの数で決まるので、大きな画面でも 2560×1440 ぶんまでに抑える
+const MAX_PIXELS = 3.7e6;
+const pixelRatio = (q) => Math.min(devicePixelRatio, PIXEL_RATIO[q] ?? 2, Math.sqrt(MAX_PIXELS / (innerWidth * innerHeight)));
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=33').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=34').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -45,7 +48,7 @@ class App {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
     this.shake = 0;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, PIXEL_RATIO[this.settings.gfx] ?? 2));
+    this.renderer.setPixelRatio(pixelRatio(this.settings.gfx));
     document.documentElement.style.setProperty('--ui', this.settings.ui);
     this.renderer.setSize(innerWidth, innerHeight);
     stage.appendChild(this.renderer.domElement);
@@ -81,7 +84,7 @@ class App {
     this.saveSettings();
     if (k === 'ui') document.documentElement.style.setProperty('--ui', v);
     if (k === 'gfx') {
-      this.renderer.setPixelRatio(Math.min(devicePixelRatio, PIXEL_RATIO[v] ?? 2));
+      this.renderer.setPixelRatio(pixelRatio(v));
       this.applyPost();
       const keep = { keepFollow: true };
       const cur = this.view;
@@ -95,8 +98,9 @@ class App {
   // 高・最高はブルームと色調整を掛ける
   applyPost() {
     const q = this.settings.gfx, want = q === 'high' || q === 'ultra';
-    if (this.post && (!want || this.post.q !== q)) { this.post.dispose(); this.post = null; }
-    if (want && !this.post) { this.post = new PostFX(this.renderer, q); this.post.q = q; }
+    if (this.post && !want) { this.post.dispose(); this.post = null; }
+    if (want && !this.post) this.post = new PostFX(this.renderer);
+    this.post?.resize();
   }
   saveSettings() {
     const { gfx, ui, spaceWatch } = this.settings;
@@ -229,6 +233,7 @@ class App {
       el.style.cursor = this.view.hover(ndc(e)) ? 'pointer' : '';
     });
     addEventListener('resize', () => {
+      this.renderer.setPixelRatio(pixelRatio(this.settings.gfx));
       this.renderer.setSize(innerWidth, innerHeight);
       this.labels.setSize(innerWidth, innerHeight);
       this.post?.resize();

@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { seeded, hashStr } from './util.js?v=33';
+import { seeded, hashStr } from './util.js?v=34';
 
 // ---------- ポストエフェクト ----------
 // 1.0 を超える光 (発光・太陽・星) だけをにじませるので、キャラのイラストの白は光らない
@@ -40,10 +40,10 @@ const GRADE = {
 };
 
 export class PostFX {
-  constructor(renderer, quality) {
+  constructor(renderer) {
     this.renderer = renderer;
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: quality === 'ultra' ? 4 : 2 });
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 2 });
     this.composer = new EffectComposer(renderer, rt);
     this.render_ = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.32, 0.55, 1.0);
@@ -341,7 +341,8 @@ export function atmosphere(color, { shell = false, power = 3, k = 1.3 } = {}) {
     fragmentShader: `
       uniform vec3 col; uniform float power, k; varying vec3 vN, vV;
       void main() {
-        float d = abs(dot(normalize(vN), normalize(vV)));
+        // 計算誤差で 1 をわずかに超えると pow が NaN になり、ブルームで黒い四角に広がるので必ず収める
+        float d = clamp(abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0);
         float a = ${shell ? 'pow(d, power) * smoothstep(0.0, 0.5, d)' : 'pow(1.0 - d, power)'};
         gl_FragColor = vec4(col * a * k, a);
         #include <colorspace_fragment>
