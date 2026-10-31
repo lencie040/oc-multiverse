@@ -1,6 +1,7 @@
 // ローポリの構造物・自然物
 import * as THREE from 'three';
-import { FONT } from './util.js?v=30';
+import { portalMaterial } from './fx.js?v=33';
+import { FONT } from './util.js?v=33';
 
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -74,6 +75,7 @@ function mesh(geo, material, x = 0, y = 0, z = 0, sx = 1, sy = sx, sz = sx) {
   m.position.set(x, y, z);
   m.scale.set(sx, sy, sz);
   m.castShadow = true;
+  m.receiveShadow = true;
   return m;
 }
 
@@ -762,7 +764,7 @@ export function buildPortal(color) {
   const g = new THREE.Group();
   const ring = mesh(G.torus, glow(color, 1.1), 0, 3.4, 0, 5.4);
   g.add(ring);
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(2.5, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(2.5, 32), portalMaterial(color));
   disc.position.y = 3.4;
   g.add(disc);
   g.add(mesh(G.cyl, mat('#555566'), 0, 0.15, 0, 5, 0.3, 2));

@@ -104,7 +104,14 @@ a.wchip:hover { background: rgba(255,255,255,.18); }
 #legend { display: flex; gap: 10px; }
 kbd { display: inline-block; min-width: 18px; text-align: center; padding: 0 4px; margin-right: 2px; border-radius: 4px; background: rgba(255,255,255,.12); color: var(--text); font-family: inherit; font-size: 11px; }
 
-#loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; background: var(--bg); font-size: 18px; color: var(--muted); }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; color: var(--muted); background: radial-gradient(ellipse at 50% 60%, #1e1a4a 0%, #0a0c26 45%, #04050d 100%); }
+.ld-in { text-align: center; }
+.ld-in h1 { margin: 0 0 18px; font-size: clamp(30px, 5vw, 54px); font-weight: 800; letter-spacing: .14em; color: #fff; text-shadow: 0 0 24px rgba(140, 170, 255, .75), 0 0 60px rgba(180, 120, 255, .4); animation: ldGlow 2.4s ease-in-out infinite alternate; }
+.ld-bar { width: 260px; height: 3px; margin: 0 auto 12px; border-radius: 3px; overflow: hidden; background: rgba(255,255,255,.12); }
+.ld-bar i { display: block; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, #bcd0ff, transparent); animation: ldBar 1.3s ease-in-out infinite; }
+.ld-in p { margin: 0; font-size: 14px; }
+@keyframes ldGlow { from { opacity: .82; } to { opacity: 1; } }
+@keyframes ldBar { from { transform: translateX(-120%); } to { transform: translateX(280%); } }
 
 /* 3D ラベル */
 .dan-label, .world-label, .portal-label, .letter-label, .clabel, .bubble, .mon-label { font-family: var(--font); pointer-events: none; white-space: nowrap; }
@@ -235,3 +242,42 @@ body.nopanels #events, body.nopanels #info { display: none; }
 #settings label { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
 #settings select { font-family: inherit; background: #1a1f3a; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; }
 .route-label { color: #c8d0ff; font-size: 12px; background: rgba(10, 14, 40, .7); border: 1px dashed rgba(160, 180, 255, .4); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+
+/* 演出 */
+#warp { position: fixed; inset: 0; z-index: 7; pointer-events: none; display: none; }
+/* おまかせ観戦の映画の帯 */
+body::before, body::after { content: ""; position: fixed; left: 0; right: 0; height: 0; z-index: 6; background: #000; pointer-events: none; transition: height .6s cubic-bezier(.2, .8, .2, 1); }
+body::before { top: 0; }
+body::after { bottom: 0; }
+body.cine::before, body.cine::after { height: 7vh; }
+/* カットイン */
+#cutin { position: fixed; inset: 0; z-index: 14; pointer-events: none; overflow: hidden; display: flex; align-items: center; justify-content: center; zoom: var(--ui, 1); }
+#cutin[hidden] { display: none; }
+#cutin .band { position: relative; flex: none; width: 130vw; min-height: 118px; padding: 16px 16vw; display: flex; align-items: center; justify-content: center; gap: 18px; transform: rotate(-3deg); color: #fff; animation: cutIn 3s cubic-bezier(.2, .9, .2, 1) both; box-shadow: 0 0 40px rgba(0, 0, 0, .55); }
+#cutin.joy .band { background: linear-gradient(90deg, rgba(30, 60, 170, 0), rgba(36, 70, 190, .94) 18%, rgba(120, 70, 220, .94) 82%, rgba(120, 70, 220, 0)); }
+#cutin.danger .band { background: linear-gradient(90deg, rgba(120, 0, 30, 0), rgba(150, 10, 40, .95) 18%, rgba(70, 0, 40, .95) 82%, rgba(70, 0, 40, 0)); }
+#cutin .band::before, #cutin .band::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .9) 30%, rgba(255, 255, 255, .9) 70%, transparent); }
+#cutin .band::before { top: 0; }
+#cutin .band::after { bottom: 0; }
+#cutin .ic { font-size: 54px; filter: drop-shadow(0 0 12px rgba(255, 255, 255, .7)); }
+#cutin .tx { flex: 0 1 620px; min-width: 0; font-size: 22px; font-weight: 800; line-height: 1.35; text-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
+#cutin .faces { display: flex; flex: none; }
+#cutin .faces img { height: 96px; max-width: 110px; object-fit: contain; margin-left: -14px; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .5)); }
+@keyframes cutIn {
+  0% { transform: rotate(-3deg) translateX(110%); opacity: 0; }
+  10% { transform: rotate(-3deg) translateX(0); opacity: 1; }
+  88% { transform: rotate(-3deg) translateX(-2%); opacity: 1; }
+  100% { transform: rotate(-3deg) translateX(-110%); opacity: 0; }
+}
+/* 世界線のタイトル */
+#titlecard { position: fixed; left: 0; right: 0; top: 34%; z-index: 8; text-align: center; pointer-events: none; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, .75), 0 0 40px rgba(0, 0, 0, .4); zoom: var(--ui, 1); }
+#titlecard[hidden] { display: none; }
+#titlecard.on { animation: titleIn 2.6s ease-out both; }
+#titlecard h1 { margin: 2px 0; font-size: 58px; font-weight: 800; letter-spacing: .32em; text-indent: .32em; }
+#titlecard small, #titlecard p { margin: 0; font-size: 14px; letter-spacing: .24em; opacity: .9; }
+@keyframes titleIn {
+  0% { opacity: 0; letter-spacing: .1em; transform: translateY(10px); }
+  18% { opacity: 1; transform: none; }
+  74% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-8px); }
+}

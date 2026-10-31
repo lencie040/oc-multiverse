@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=30">
+  <link rel="stylesheet" href="style.css?v=33">
   <script type="importmap">
     {
       "imports": {
@@ -54,6 +54,9 @@
   <div id="toasts"></div>
   <div id="caption" hidden></div>
   <div id="fade"></div>
+  <canvas id="warp"></canvas>
+  <div id="cutin" hidden></div>
+  <div id="titlecard" hidden></div>
   <div id="news" hidden></div>
 
   <aside id="events" class="panel">
@@ -85,8 +88,14 @@
     <span id="legend"></span>
   </footer>
 
-  <div id="loading">宇宙を準備しています…</div>
+  <div id="loading">
+    <div class="ld-in">
+      <h1>オリキャラ多元宇宙</h1>
+      <div class="ld-bar"><i></i></div>
+      <p>宇宙を準備しています…</p>
+    </div>
+  </div>
 
-  <script type="module" src="js/main.js?v=30"></script>
+  <script type="module" src="js/main.js?v=33"></script>
 </body>
 </html>

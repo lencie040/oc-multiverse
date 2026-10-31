@@ -1,23 +1,24 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=30';
-import { Sim } from './sim.js?v=30';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=30';
-import { UI } from './ui.js?v=30';
-import { Director } from './director.js?v=30';
-import { Sound, moodOf } from './audio.js?v=30';
-import { MIN_PER_DAY, nowGameT } from './util.js?v=30';
-import { Sync } from './sync.js?v=30';
+import { buildModel } from './model.js?v=33';
+import { Sim } from './sim.js?v=33';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=33';
+import { UI } from './ui.js?v=33';
+import { Director } from './director.js?v=33';
+import { Sound, moodOf } from './audio.js?v=33';
+import { MIN_PER_DAY, nowGameT } from './util.js?v=33';
+import { Sync } from './sync.js?v=33';
+import { PostFX } from './fx.js?v=33';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
 // グラフィック設定ごとの描画解像度
-const PIXEL_RATIO = { low: 0.75, mid: 1, high: 2, ultra: 2 };
+const PIXEL_RATIO = { low: 0.75, mid: 1, high: 1.5, ultra: 2 };
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=30').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=33').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -33,17 +34,22 @@ class App {
     this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true, gfx: 'high', ui: 1 };
     try { Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* 保存できない環境 */ }
     this.sound = new Sound();
-    this.sim.listen((e) => this.eventSound(e));
+    this.sim.listen((e) => { this.eventSound(e); this.view?.onSimEvent?.(e); });
     this.keys = {};
     this.selected = null;
     this.following = false;
 
     const stage = document.getElementById('stage');
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.shake = 0;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, PIXEL_RATIO[this.settings.gfx] ?? 2));
     document.documentElement.style.setProperty('--ui', this.settings.ui);
     this.renderer.setSize(innerWidth, innerHeight);
     stage.appendChild(this.renderer.domElement);
+    this.applyPost();
     this.labels = new CSS2DRenderer();
     this.labels.setSize(innerWidth, innerHeight);
     this.labels.domElement.id = 'labels';
@@ -76,6 +82,7 @@ class App {
     if (k === 'ui') document.documentElement.style.setProperty('--ui', v);
     if (k === 'gfx') {
       this.renderer.setPixelRatio(Math.min(devicePixelRatio, PIXEL_RATIO[v] ?? 2));
+      this.applyPost();
       const keep = { keepFollow: true };
       const cur = this.view;
       if (cur.kind === 'world') { this.view = null; cur.dispose(); this.openWorld(cur.worldId, keep); }
@@ -84,6 +91,12 @@ class App {
       this.ui.syncSpaceBtn();
       if (this.director.on) this.director.pickIdle();
     }
+  }
+  // 高・最高はブルームと色調整を掛ける
+  applyPost() {
+    const q = this.settings.gfx, want = q === 'high' || q === 'ultra';
+    if (this.post && (!want || this.post.q !== q)) { this.post.dispose(); this.post = null; }
+    if (want && !this.post) { this.post = new PostFX(this.renderer, q); this.post.q = q; }
   }
   saveSettings() {
     const { gfx, ui, spaceWatch } = this.settings;
@@ -111,7 +124,10 @@ class App {
 
   setView(v, hash) {
     this.view?.dispose();
-    if (this.view) this.sound.play('whoosh');
+    if (this.view) {
+      this.sound.play('warp');
+      this.ui.warp(v.kind === 'world' || (v.kind === 'dan' && this.view.kind === 'universe'));
+    }
     this.view = v;
     this.view.resize();
     if (location.hash !== hash) { this.ignoreHash = true; location.hash = hash; }
@@ -215,6 +231,7 @@ class App {
     addEventListener('resize', () => {
       this.renderer.setSize(innerWidth, innerHeight);
       this.labels.setSize(innerWidth, innerHeight);
+      this.post?.resize();
       this.view.resize();
     });
     addEventListener('keydown', (e) => {
@@ -269,8 +286,18 @@ class App {
     this.director.tick();
     this.sync.tick();
     this.updateMusic();
-    this.renderer.render(this.view.scene, this.view.camera);
-    this.labels.render(this.view.scene, this.view.camera);
+    this.view.postUpdate(dt);
+    // 大きな出来事のカメラの揺れ
+    const cam = this.view.camera, saved = cam.position.clone();
+    if (this.shake > 0.01) {
+      const k = this.shake * cam.position.distanceTo(this.view.controls.target) * 0.012;
+      cam.position.add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(k));
+      this.shake = Math.max(0, this.shake - dt * 1.6);
+    }
+    if (this.post) this.post.render(this.view.scene, cam, dt, this.view.kind === 'world' ? 0.26 : 0.5);
+    else this.renderer.render(this.view.scene, cam);
+    this.labels.render(this.view.scene, cam);
+    cam.position.copy(saved);
   }
 }
 

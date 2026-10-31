@@ -2,8 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=30';
-import { TYPE_COLOR } from './types.js?v=30';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=33';
+import { TYPE_COLOR } from './types.js?v=33';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, batchStatic } from './fx.js?v=33';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -12,8 +13,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=30';
-import { CATS } from './sim.js?v=30';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=33';
+import { CATS } from './sim.js?v=33';
 
 // グラフィック設定 (低・中・高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -75,12 +76,37 @@ class BaseView {
     this.controls.dampingFactor = 0.08;
     this.controls.screenSpacePanning = false;
     this.pickables = [];
+    this.owned = []; // この画面だけで使うテクスチャ (閉じる時に片付ける)
+    this.quality = gfx();
     this.raycaster = new THREE.Raycaster();
     this.hovered = null;
     this.bound = 300;
     // おまかせ観戦中に手で動かしたら、しばらくは自動カメラを止める
     this.userHold = 0;
     this.controls.addEventListener('start', () => { this.userHold = 6; });
+  }
+  // 宇宙の背景: 星雲の絵 + またたく星 + すれ違う塵
+  spaceBackdrop(key, cols, fallback) {
+    if (this.quality === 'low') { this.scene.add(fallback); return; }
+    this.scene.background = nebulaTexture(this.app.renderer, key, cols);
+    this.stars = starLayer(this.quality === 'ultra' ? 5200 : this.quality === 'high' ? 3800 : 2400, 20000, key);
+    this.scene.add(this.stars);
+    if (this.quality !== 'mid') {
+      this.dust = spaceDust(600, 140);
+      this.scene.add(this.dust);
+    }
+  }
+  // 毎フレームの最後に、カメラについてくるものを動かす
+  postUpdate(dt) {
+    if (this.stars) {
+      this.stars.position.copy(this.camera.position);
+      this.stars.material.uniforms.time.value += dt;
+    }
+    if (this.dust) this.dust.material.uniforms.cam.value.copy(this.camera.position);
+    if (this.sky) {
+      this.sky.mesh.position.copy(this.camera.position);
+      this.sky.u.time.value += dt;
+    }
   }
   resize() {
     this.camera.aspect = innerWidth / innerHeight;
@@ -198,7 +224,7 @@ class BaseView {
     sp.renderOrder = 10;
     sp.scale.setScalar(size);
     g.add(sp);
-    const glowSp = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT, color: '#fff3a0', transparent: true, opacity: 0.55, depthWrite: false }));
+    const glowSp = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT, color: new THREE.Color('#fff3a0').multiplyScalar(2.2), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
     glowSp.scale.setScalar(size * 2.2);
     g.add(glowSp);
     g.renderOrder = 10;
@@ -206,7 +232,7 @@ class BaseView {
     lb.position.y = size * 0.75;
     g.add(lb);
     const c1 = colorOf(c.colors[0], '#fff3a0');
-    const trail = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: c1 === 'rainbow' ? '#ffffff' : c1, transparent: true, opacity: 0.9 }));
+    const trail = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: new THREE.Color(c1 === 'rainbow' ? '#ffffff' : c1).multiplyScalar(2.2), transparent: true, opacity: 0.9 }));
     g.userData = { pick: true, onClick: () => this.app.selectChar(c.id), onHover: (on) => lb.inner.classList.toggle('hot', on) };
     this.scene.add(g, trail);
     this.pickables.push(g);
@@ -244,6 +270,7 @@ class BaseView {
       if (o.isCSS2DObject && o.element.parentNode) o.element.parentNode.removeChild(o.element);
     });
     this.scene.clear();
+    for (const x of this.owned) x.dispose();
   }
 }
 
@@ -254,7 +281,7 @@ export class UniverseView extends BaseView {
     this.kind = 'universe';
     const { model } = app;
     this.scene.background = new THREE.Color('#04050d');
-    this.scene.add(starfield(5000, 9000));
+    this.spaceBackdrop('universe', ['#080a22', '#3a1d6e', '#1f6a8a'], starfield(5000, 9000));
     this.scene.add(new THREE.AmbientLight('#ffffff', 0.6));
     const sun = new THREE.PointLight('#ffffff', 2.5, 0, 0);
     this.scene.add(sun);
@@ -271,9 +298,8 @@ export class UniverseView extends BaseView {
       const core = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 32),
         new THREE.MeshStandardMaterial({ color: d.color, emissive: d.color, emissiveIntensity: 0.25, roughness: 0.35, transparent: true, opacity: 0.55 }));
       g.add(core);
-      const halo = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.18, 32, 24),
-        new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.12, side: THREE.BackSide }));
-      g.add(halo);
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(radius * 1.01, 48, 32), atmosphere(d.color, { power: 2.4, k: 1.7 })));
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(radius * 1.4, 32, 24), atmosphere(d.color, { shell: true, power: 2.6, k: 0.8 })));
       // 中に浮かぶ世界線のつぶ
       const inner = new THREE.Group();
       for (const wid of d.worlds) {
@@ -350,8 +376,8 @@ export class ClusterView extends BaseView {
     const { model, sim } = app;
     const dan = model.danById.get(danId);
     this.scene.background = new THREE.Color('#05061a');
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#334', 1.4));
-    const dl = new THREE.DirectionalLight('#ffffff', 1.2);
+    this.scene.add(new THREE.HemisphereLight('#c8d4ff', '#223', 0.7));
+    const dl = new THREE.DirectionalLight('#fff4e0', 2.6);
     dl.position.set(50, 100, 30);
     this.scene.add(dl);
 
@@ -367,13 +393,15 @@ export class ClusterView extends BaseView {
       const g = new THREE.Group();
       g.position.set(w.pos.x, w.pos.y, w.pos.z);
       const sph = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 20),
-        new THREE.MeshStandardMaterial({ color: w.theme.ground, emissive: w.theme.ground, emissiveIntensity: 0.35, roughness: 0.6, ...(this.ultra ? { transparent: true, opacity: 0.16, depthWrite: false } : {}) }));
+        planetMaterial(w.theme.ground, this.ultra ? { transparent: true, opacity: 0.1, depthWrite: false } : {}));
+      this.owned.push(sph.material.map);
       g.add(sph);
+      // 大気: ふちの光と、外へにじむ光輪
+      const air = new THREE.Color(w.theme.sky).lerp(new THREE.Color(w.theme.ground), 0.3).lerp(new THREE.Color('#ffffff'), 0.25);
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(r * 1.005, 32, 20), atmosphere(air, { power: 3, k: 1.5 })));
       const mini = this.ultra ? buildMini(w, model, r) : null;
       if (mini) g.add(mini);
-      const atm = new THREE.Mesh(new THREE.SphereGeometry(r * 1.25, 24, 16),
-        new THREE.MeshBasicMaterial({ color: w.theme.sky, transparent: true, opacity: 0.18, side: THREE.BackSide }));
-      g.add(atm);
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(r * 1.3, 24, 16), atmosphere(air, { shell: true, power: 3, k: 0.75 })));
       if (w.danger > 0) {
         // 魔物の多さ = 赤い輪
         const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.45, 0.06 + w.danger / 80, 6, 40),
@@ -386,7 +414,7 @@ export class ClusterView extends BaseView {
       g.add(lb);
       g.userData = {
         pick: true,
-        onHover: (on) => { sph.material.emissiveIntensity = on ? 0.8 : 0.35; lb.inner.classList.toggle('hot', on); },
+        onHover: (on) => { sph.material.emissiveIntensity = on ? 0.8 : 0.28; lb.inner.classList.toggle('hot', on); },
         onClick: () => app.openWorld(wid),
       };
       this.scene.add(g);
@@ -417,7 +445,8 @@ export class ClusterView extends BaseView {
       this.scene.add(lb);
     }
 
-    this.scene.add(starfield(3000, Math.max(900, maxR * 5)));
+    const hue = new THREE.Color(dan.color);
+    this.spaceBackdrop('dan:' + danId, ['#070a1e', hue.clone().multiplyScalar(0.4).getStyle(), '#6a2a8a'], starfield(3000, Math.max(900, maxR * 5)));
     this.maxR = maxR;
     this.camera.position.set(0, maxR * 0.6, maxR * 1.1);
     this.controls.minDistance = this.ultra ? 2 : 10;
@@ -540,7 +569,6 @@ export class ClusterView extends BaseView {
 function buildMini(w, model, r) {
   const { geo, theme: th } = w;
   const g = new THREE.Group();
-  g.scale.setScalar((r * 0.8) / geo.R);
   const ground = new THREE.Color(th.ground);
   const top = new THREE.Mesh(new THREE.CylinderGeometry(geo.R, geo.R * 0.97, 2, 48), [
     mat(ground.clone().multiplyScalar(0.7).getStyle()), mat(th.ground), mat(th.ground),
@@ -577,6 +605,8 @@ function buildMini(w, model, r) {
     o.scale.multiplyScalar(p.s);
     g.add(o);
   }
+  batchStatic(g);
+  g.scale.setScalar((r * 0.8) / geo.R);
   return g;
 }
 
@@ -657,41 +687,126 @@ export class WorldView extends BaseView {
     const R = geo.R;
     this.bound = R;
     this.skyDay = new THREE.Color(th.sky);
-    this.skyNight = new THREE.Color(th.sky).lerp(new THREE.Color('#050818'), 0.82);
+    this.skyNight = new THREE.Color(th.sky).lerp(new THREE.Color('#050818'), 0.95);
     this.scene.background = this.skyDay.clone();
-    this.scene.fog = new THREE.Fog(this.skyDay.clone(), R * 1.6, R * 4.5);
+    this.scene.fog = new THREE.Fog(this.skyDay.clone(), R * 2.6, R * 7);
 
     this.hemi = new THREE.HemisphereLight('#ffffff', th.ground, 1);
     this.sun = new THREE.DirectionalLight('#ffffff', 1.4);
     this.sun.position.set(R * 0.6, R, R * 0.3);
     this.scene.add(this.hemi, this.sun);
+    const q = this.quality;
+    this.groundCol = new THREE.Color(th.ground);
+    // 影
+    if (q === 'high' || q === 'ultra') {
+      const s = this.sun.shadow;
+      this.sun.castShadow = true;
+      s.mapSize.setScalar(q === 'ultra' ? 4096 : 2048);
+      const span = R * 1.15;
+      Object.assign(s.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: R * 5 });
+      s.camera.updateProjectionMatrix();
+      s.bias = -0.0004;
+      s.normalBias = 0.5;
+      this.shadowT = 0;
+    }
+    if (q !== 'low') {
+      this.sky = new SkyDome(25000);
+      this.scene.add(this.sky.mesh);
+      // 雲: 島のまわりと、下に広がる雲海
+      this.clouds = new THREE.Group();
+      const ctex = cloudTexture();
+      for (let i = 0; i < 26; i++) {
+        const low = i < 12, a = Math.random() * Math.PI * 2, rr = R * (low ? 1.5 + Math.random() * 3 : 2.6 + Math.random() * 2.4);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ctex, transparent: true, opacity: low ? 0.75 : 0.5, depthWrite: false, fog: false }));
+        const s = R * (low ? 1 + Math.random() : 0.5 + Math.random() * 0.7);
+        sp.scale.set(s * 2, s, 1);
+        sp.position.set(Math.cos(a) * rr, low ? -R * (1 + Math.random() * 0.8) : R * (0.25 + Math.random() * 0.7), Math.sin(a) * rr);
+        this.clouds.add(sp);
+      }
+      this.scene.add(this.clouds);
+    }
+    this.bursts = new Bursts(this.scene, q === 'low' ? 500 : 2600);
 
     // 浮島
     const ground = new THREE.Color(th.ground);
     const island = new THREE.Group();
+    const texOf = (kind, rx, ry) => {
+      const t = noiseTexture(kind).clone();
+      t.needsUpdate = true;
+      t.repeat.set(rx, ry);
+      this.owned.push(t);
+      return t;
+    };
     const top = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.97, 2, 96), [
-      mat(ground.clone().multiplyScalar(0.7).getStyle()), mat(th.ground), mat(th.ground),
+      new THREE.MeshStandardMaterial({ color: ground.clone().multiplyScalar(0.72), map: texOf('rock', 6, 0.4), roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: ground, map: texOf('ground', R / 14, R / 14), roughness: 0.95 }),
+      mat(th.ground),
     ]);
     top.position.y = -1;
+    top.receiveShadow = true;
     island.add(top);
-    const under = new THREE.Mesh(new THREE.ConeGeometry(R * 0.97, R * 0.7, 14, 3), mat(ground.clone().multiplyScalar(0.45).getStyle()));
-    under.rotation.x = Math.PI;
-    under.position.y = -2 - R * 0.35;
-    island.add(under);
-    // 地面のまだら模様
-    const patchGeo = new THREE.CircleGeometry(1, 18);
-    for (let i = 0; i < Math.round(R * 0.6); i++) {
-      const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * R * 0.92;
-      const col = ground.clone().offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.1);
-      const p = new THREE.Mesh(patchGeo, new THREE.MeshLambertMaterial({ color: col }));
-      p.rotation.x = -Math.PI / 2;
-      p.position.set(Math.cos(a) * rr, 0.01 + i * 0.0003, Math.sin(a) * rr);
-      p.scale.setScalar(2 + Math.random() * R * 0.06);
-      island.add(p);
+    // 島の下の岩: 不ぞろいに削って地層の模様をつける
+    const coneGeo = new THREE.ConeGeometry(R * 0.97, R * 0.75, 28, 6);
+    const cp = coneGeo.attributes.position;
+    for (let i = 0; i < cp.count; i++) {
+      const y = cp.getY(i), k = 1 + (Math.sin(i * 12.9898) * 43758.5453 % 1) * 0.1 * (0.5 - y / (R * 0.75));
+      cp.setX(i, cp.getX(i) * k); cp.setZ(i, cp.getZ(i) * k);
     }
+    coneGeo.computeVertexNormals();
+    const under = new THREE.Mesh(coneGeo, new THREE.MeshStandardMaterial({ color: ground.clone().multiplyScalar(0.5), map: texOf('rock', 4, 1.2), roughness: 1, flatShading: true }));
+    under.rotation.x = Math.PI;
+    under.position.y = -2 - R * 0.375;
+    island.add(under);
+    // 島のまわりに浮かぶ岩
+    this.rocks = [];
+    if (q !== 'low') {
+      const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+      const rockMat = new THREE.MeshStandardMaterial({ color: ground.clone().multiplyScalar(0.55), map: under.material.map, roughness: 1, flatShading: true });
+      for (let i = 0; i < 12; i++) {
+        const a = Math.random() * Math.PI * 2, rr = R * (1.14 + Math.random() * 0.6), s = R * (0.02 + Math.random() * 0.07);
+        const m = new THREE.Mesh(rockGeo, rockMat);
+        m.position.set(Math.cos(a) * rr, -R * (0.05 + Math.random() * 0.4), Math.sin(a) * rr);
+        m.scale.set(s, s * 0.7, s);
+        m.rotation.set(Math.random(), Math.random() * 6, Math.random());
+        island.add(m);
+        this.rocks.push({ m, y: m.position.y, p: Math.random() * 6, s });
+      }
+    }
+    // 草むら (高・最高)
+    if (q === 'high' || q === 'ultra') {
+      const n = Math.round(R * (q === 'ultra' ? 22 : 12));
+      const im = new THREE.InstancedMesh(new THREE.ConeGeometry(0.2, 1, 4), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), n);
+      const d = new THREE.Object3D(), col = new THREE.Color();
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, rr = geo.plazaR + 1 + Math.sqrt(Math.random()) * (R * 0.96 - geo.plazaR - 1);
+        d.position.set(Math.cos(a) * rr, 0.3, Math.sin(a) * rr);
+        d.rotation.set((Math.random() - 0.5) * 0.5, Math.random() * 6, (Math.random() - 0.5) * 0.5);
+        d.scale.setScalar(0.5 + Math.random() * 0.9);
+        d.updateMatrix();
+        im.setMatrixAt(i, d.matrix);
+        im.setColorAt(i, col.copy(ground).offsetHSL((Math.random() - 0.5) * 0.05, 0.05, 0.03 + Math.random() * 0.1));
+      }
+      island.add(im);
+    }
+    // 地面のまだら模様
+    const nPatch = Math.round(R * 0.6);
+    const patches = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 18), new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.55, depthWrite: false }), nPatch);
+    patches.receiveShadow = true;
+    const pd = new THREE.Object3D();
+    pd.rotation.x = -Math.PI / 2;
+    for (let i = 0; i < nPatch; i++) {
+      const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * R * 0.92;
+      pd.position.set(Math.cos(a) * rr, 0.01 + i * 0.0003, Math.sin(a) * rr);
+      pd.scale.setScalar(2 + Math.random() * R * 0.06);
+      pd.updateMatrix();
+      patches.setMatrixAt(i, pd.matrix);
+      patches.setColorAt(i, ground.clone().offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.1));
+    }
+    island.add(patches);
     // 広場と道
     const plazaCol = ground.clone().lerp(new THREE.Color('#f4ead0'), 0.45);
     const plaza = new THREE.Mesh(new THREE.CircleGeometry(geo.plazaR, 40), new THREE.MeshLambertMaterial({ color: plazaCol }));
+    plaza.receiveShadow = true;
     plaza.rotation.x = -Math.PI / 2;
     plaza.position.y = 0.06;
     island.add(plaza);
@@ -699,6 +814,7 @@ export class WorldView extends BaseView {
     for (const p of Object.values(geo.portals)) {
       const len = Math.hypot(p.x, p.z) - geo.plazaR;
       const road = new THREE.Mesh(new THREE.PlaneGeometry(2.2, len), roadMat);
+      road.receiveShadow = true;
       road.rotation.x = -Math.PI / 2;
       road.rotation.z = -Math.atan2(p.z, p.x) + Math.PI / 2;
       const mid = (geo.plazaR + len / 2) / Math.hypot(p.x, p.z);
@@ -714,7 +830,8 @@ export class WorldView extends BaseView {
     this.animated = [];
     if (lm.userData.spin || lm.userData.float || lm.userData.flicker) this.animated.push(lm);
 
-    // 家
+    // 家 (動かないものは staticRoot に集めて、最後に1つにまとめる)
+    const staticRoot = new THREE.Group();
     for (const id of w.residents) {
       const c = model.charById.get(id);
       const h = geo.homes[id];
@@ -723,13 +840,13 @@ export class WorldView extends BaseView {
       const k = 1 + 2.8 / Math.max(1, Math.hypot(h.x, h.z));
       house.position.set(h.x * k, 0, h.z * k);
       house.rotation.y = Math.atan2(-h.x, -h.z);
-      this.scene.add(house);
+      staticRoot.add(house);
     }
     for (const wp of geo.works) {
       const b = buildWorkplace(th.ground);
       b.position.set(wp.x, 0, wp.z);
       b.rotation.y = Math.atan2(-wp.x, -wp.z);
-      this.scene.add(b);
+      staticRoot.add(b);
     }
     if (geo.pond) {
       const p = buildProp('pond', null, 0.5);
@@ -743,9 +860,12 @@ export class WorldView extends BaseView {
       o.rotation.y = p.rot;
       o.scale.multiplyScalar(p.s);
       o.userData.phase = p.seed * 10;
-      this.scene.add(o);
-      if (o.userData.spin || o.userData.float || o.userData.flicker || o.userData.sway || o.userData.pulse) this.animated.push(o);
+      if (o.userData.spin || o.userData.float || o.userData.flicker || o.userData.sway || o.userData.pulse) {
+        this.scene.add(o);
+        this.animated.push(o);
+      } else staticRoot.add(o);
     }
+    this.scene.add(batchStatic(staticRoot));
 
     // ポータル
     this.portalLabels = [];
@@ -896,11 +1016,30 @@ export class WorldView extends BaseView {
     const sky = this.skyNight.clone().lerp(this.skyDay, day).lerp(new THREE.Color('#ff8a5a'), dusk * 0.5);
     this.scene.background.copy(sky);
     this.scene.fog.color.copy(sky);
-    this.hemi.intensity = 0.45 + 0.75 * day;
-    this.sun.intensity = 0.25 + 1.3 * day;
-    this.sun.color.set(day > 0.3 ? '#fff6e8' : '#8aa0ff');
+    if (this.sky) {
+      const u = this.sky.u;
+      const white = new THREE.Color('#ffffff');
+      u.top.value.copy(sky).offsetHSL(0, 0.12 * day, -0.1 * day).multiplyScalar(0.8 + 0.2 * day);
+      u.horizon.value.copy(sky).lerp(white, 0.38 * day).lerp(new THREE.Color('#ffb080'), dusk * 0.45);
+      u.bottom.value.copy(u.horizon.value).lerp(this.groundCol, 0.12).multiplyScalar(0.85 + 0.15 * day);
+      this.scene.fog.color.copy(u.horizon.value);
+      u.night.value = 1 - day;
+      u.sunCol.value.set(day > 0.3 ? '#fff0d8' : '#c8d8ff').lerp(new THREE.Color('#ff9a5a'), dusk).multiplyScalar(day > 0.3 ? 1 : 0.55);
+      const cc = new THREE.Color('#ffffff').lerp(new THREE.Color('#ffb48a'), dusk).lerp(this.skyNight.clone().multiplyScalar(2.2), 1 - day);
+      for (const s of this.clouds.children) s.material.color.copy(cc);
+      this.clouds.rotation.y += dt * 0.006;
+    }
+    for (const r of this.rocks) r.m.position.y = r.y + Math.sin(this.elapsed * 0.5 + r.p) * r.s * 0.25;
+    // 環境光を控えめにして、太陽の光と影で立体感を出す
+    this.hemi.intensity = 0.42 + 0.48 * day;
+    this.sun.intensity = 0.3 + 2.3 * day;
+    this.sun.color.set(day > 0.3 ? '#fff4e2' : '#8aa0ff').lerp(new THREE.Color('#ff9a5a'), dusk * 0.8);
     const a = ((h - 6) / 24) * Math.PI * 2;
-    this.sun.position.set(Math.cos(a) * this.bound, Math.abs(Math.sin(a)) * this.bound + 20, this.bound * 0.3);
+    this.sun.position.set(Math.cos(a) * this.bound * 1.6, (Math.abs(Math.sin(a)) * this.bound + 20) * 1.6, this.bound * 0.5);
+    if (this.sky) this.sky.u.sunDir.value.copy(this.sun.position).normalize();
+    // 影は重いので、ときどきだけ描き直す (太陽はゆっくりしか動かない)
+    if (this.sun.castShadow && (this.shadowT -= dt) <= 0) { this.shadowT = 1.5; this.app.renderer.shadowMap.needsUpdate = true; }
+    this.bursts.update(dt);
 
     // 動く小物
     const t = this.elapsed;
@@ -911,7 +1050,7 @@ export class WorldView extends BaseView {
       if (u.sway) o.rotation.z = Math.sin(t * 1.5 + (u.phase || 0)) * 0.08;
       if (u.flicker) o.scale.y = (u.baseS ??= o.scale.y) * (1 + Math.sin(t * 13 + (u.phase || 0)) * 0.08);
       if (u.pulse) o.scale.x = o.scale.z = (u.baseS ??= o.scale.x) * (1 + Math.max(0, Math.sin(t * 6 + (u.phase || 0))) * 0.04);
-      if (u.portalDisc) u.portalDisc.material.opacity = 0.3 + Math.sin(t * 3) * 0.12;
+      if (u.portalDisc) u.portalDisc.material.uniforms.time.value = t;
     }
     if (this.particles) this.updateParticles(dt, t);
 
@@ -955,7 +1094,7 @@ export class WorldView extends BaseView {
       const H = 3.2 + (c.rank - 1) * 0.12;
       const W = H * (u.tex.ready ? u.tex.aspect : 1) * (c.img ? 1 : 0.92);
       const down = c.state === 'down', lying = down || c.state === 'camp' || c.state === 'sleep';
-      u.sp.material.rotation = lying ? Math.PI / 2 : 0;
+      u.sp.material.rotation = lying ? Math.PI / 2 : c.walking || u.fidMoving ? Math.sin(t * 9 + u.phase) * 0.05 : 0;
       u.sp.scale.set(c.img ? W : H * 0.92, c.img ? H : H * 0.92, 1);
       const bob = c.walking || u.fidMoving ? Math.abs(Math.sin(t * 9 + u.phase)) * 0.35 : Math.sin(t * 2 + u.phase) * 0.04 + 0.04;
       u.sp.position.y = (lying ? Math.min(W, H) * 0.5 * 0.9 : (c.img ? H : H * 0.92) / 2) + bob;
@@ -989,6 +1128,7 @@ export class WorldView extends BaseView {
       if (fighting && camD < 140 && (u.hitT -= dt) < 0) {
         u.hitT = 0.45 + Math.random() * 0.5;
         this.floatText(o, `💥${Math.round(30 + Math.random() * (raidFight ? 900 : 300))}`, H * 0.8, 'hit');
+        this.bursts.burst(o.position.x, H * 0.6, o.position.z, { n: 9, speed: 8, colors: ['#ffd27a', '#ff7a3a'], size: 0.32, life: 0.4, g: 5, hdr: 2.2 });
       }
       // テント
       if (c.state === 'camp' && !c.partyLeader) {
@@ -1041,7 +1181,12 @@ export class WorldView extends BaseView {
       o.rotation.y += dt * (m.engagedBy ? 6 : 0.6);
       o.userData.lb.visible = settings.names;
     }
-    for (const id of [...this.monObjs.keys()]) if (!alive.has(id)) this.removeObj(this.monObjs, id);
+    for (const id of [...this.monObjs.keys()]) {
+      if (alive.has(id)) continue;
+      const p = this.monObjs.get(id).position;
+      this.bursts.burst(p.x, 1.2, p.z, { n: 26, speed: 10, colors: ['#b070ff', '#ff5a8a', '#ffffff'], size: 0.5, life: 0.7, g: 2, hdr: 2 });
+      this.removeObj(this.monObjs, id);
+    }
 
     // レイドボス
     const raids = new Set();
@@ -1179,10 +1324,19 @@ export class WorldView extends BaseView {
       m.position.set(e.x, big ? 100 : 15, e.z);
       this.scene.add(m);
       this.fx.push({ m, life: big ? 3 : 1.5, max: big ? 3 : 1.5 });
+      // 足もとに広がる光の輪と、舞い上がる光の粒
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 48),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(big ? '#e8d0ff' : '#fff6a0').multiplyScalar(2), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(e.x, 0.3, e.z);
+      this.scene.add(ring);
+      this.fx.push({ m: ring, life: 1.1, max: 1.1, grow: big ? 26 : 13 });
+      this.bursts.burst(e.x, 2, e.z, { n: big ? 90 : 40, speed: big ? 16 : 9, up: 7, colors: big ? ['#e8d0ff', '#9ac8ff'] : ['#fff6a0', '#ffffff'], size: 0.42, life: 1.1, g: -1, hdr: 2.2 });
     }
     this.fx = this.fx.filter((f) => {
       f.life -= dt;
       f.m.material.opacity = Math.max(0, f.life / f.max) * 0.7;
+      if (f.grow) f.m.scale.setScalar(1 + (1 - f.life / f.max) * f.grow);
       if (f.life <= 0) { this.scene.remove(f.m); f.m.geometry.dispose(); f.m.material.dispose(); return false; }
       return true;
     });
@@ -1207,9 +1361,45 @@ export class WorldView extends BaseView {
     return new THREE.Vector3(base.x + (base.x / len) * out, up, base.z + (base.z / len) * out);
   }
 
+  // シミュレーションの大きな出来事に合わせた演出
+  onSimEvent(e) {
+    if (e.world !== this.worldId) return;
+    const c = this.app.model.charById.get(e.ids?.[0]);
+    const here = c && c.world === this.worldId;
+    const x = here ? c.x : 0, z = here ? c.z : 0;
+    const t = e.text, B = this.bursts, S = this.app.sound;
+    const camD = this.camera.position.distanceTo(new THREE.Vector3(x, 0, z));
+    const vol = clamp(1.3 - camD / (this.bound * 1.6), 0.25, 1);
+    const fireworks = (n) => {
+      const cols = ['#ff5a7a', '#ffd84a', '#5ad0ff', '#7ae08a', '#c88aff', '#ff9a4a'];
+      for (let i = 0; i < n; i++) {
+        setTimeout(() => {
+          if (this.app.view !== this) return;
+          B.firework(x + (Math.random() - 0.5) * 34, z + (Math.random() - 0.5) * 34, 34 + Math.random() * 26, cols[Math.floor(Math.random() * cols.length)]);
+          S.play('firework', { vol });
+        }, i * 650 + Math.random() * 300);
+      }
+    };
+    if (t.startsWith('🎂') && t.includes('パーティー')) { B.confetti(x, 14, z, 12, 120); S.play('party', { vol }); }
+    else if (t.startsWith('🎉')) { B.confetti(x, 14, z, 14, 160); fireworks(3); }
+    else if (t.startsWith('🏅')) { B.confetti(x, 14, z, 16, 200); fireworks(3); }
+    else if (t.startsWith('🏆')) { fireworks(7); this.app.shake = 1; }
+    else if (t.startsWith('🎊')) { B.confetti(0, 18, 0, this.bound * 0.4, 260); fireworks(5); }
+    else if (t.startsWith('🐉') || t.startsWith('💥') || t.startsWith('🏚️')) this.app.shake = 1.4;
+    else if (t.startsWith('🔥')) this.app.shake = 0.7;
+    else if (t.startsWith('💰') || t.startsWith('💎')) B.burst(x, 3, z, { n: 90, speed: 14, up: 6, colors: ['#ffe27a', '#ffffff'], size: 0.5, life: 1.3, g: 7, hdr: 2.6 });
+    else if (t.startsWith('💕')) B.burst(x, 3, z, { n: 40, speed: 6, up: 5, colors: ['#ff7ab0', '#ffb0d0'], size: 0.55, life: 1.3, g: 1, hdr: 1.8 });
+  }
+
   floatText(parent, text, y, cls, silent = false) {
     if (this.floats.length > 120) return;
-    if (!silent) this.app.sound.play(cls === 'emote' ? 'pop' : cls);
+    if (!silent) {
+      // 遠いほど小さく、画面の左右に合わせて聞こえる
+      const p = parent.getWorldPosition(new THREE.Vector3());
+      const d = this.camera.position.distanceTo(p);
+      const v = p.clone().project(this.camera);
+      this.app.sound.play(cls === 'emote' ? 'pop' : cls, { vol: clamp(1.15 - d / 150, 0, 1), pan: clamp(v.x, -1, 1) * 0.6 });
+    }
     const lb = label(escapeHtml(text), `float-${cls}`);
     lb.position.set((Math.random() - 0.5) * 1.6, y, (Math.random() - 0.5) * 0.6);
     parent.add(lb);

@@ -33,6 +33,8 @@ export class Sync {
 
   // 起動時: 保存された世界を読む。undefined = 同期を使えない、null = まだ保存がない
   async load() {
+    // ?solo を付けると同期せずに動く (表示の確認用。みんなの世界に影響しない)
+    if (new URLSearchParams(location.search).has('solo')) return undefined;
     try {
       const { createClient } = await timeout(import(LIB), 8000);
       this.sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
@@ -68,7 +70,13 @@ export class Sync {
     const st = this.ch.presenceState();
     const members = Object.entries(st).map(([id, metas]) => ({ id, since: metas[0]?.since ?? Infinity, v: metas[0]?.v ?? 0 }));
     if (!members.some((m) => m.id === this.id)) return;
-    if (members.some((m) => m.v > APP_V) && !this.reloading) { this.reloading = true; location.reload(); return; }
+    // 新しい版の人がいたら読み込み直す。読み込み直しても版が変わらない時 (公開が反映される前など) はくり返さない
+    const newest = Math.max(...members.map((m) => m.v));
+    if (newest > APP_V && sessionStorage.getItem('oc-reloaded-for') !== String(newest)) {
+      sessionStorage.setItem('oc-reloaded-for', String(newest));
+      location.reload();
+      return;
+    }
     this.viewers = members.length;
     members.sort((a, b) => b.v - a.v || a.since - b.since || (a.id < b.id ? -1 : 1));
     this.setRole(members[0].id === this.id ? 'host' : 'viewer');

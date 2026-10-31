@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=30';
-import { prioOf } from './director.js?v=30';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=30';
-import { typeSummary, TYPE_COLOR } from './types.js?v=30';
+import { CATS } from './sim.js?v=33';
+import { prioOf } from './director.js?v=33';
+import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=33';
+import { typeSummary, TYPE_COLOR } from './types.js?v=33';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -103,6 +103,8 @@ export class UI {
   onViewChange() {
     const v = this.app.view;
     const { model } = this.app;
+    if (v.kind === 'world' && v.worldId !== this.lastTitle) this.titleCard(v.world);
+    this.lastTitle = v.kind === 'world' ? v.worldId : null;
     let html = `<a data-go="u" class="${v.kind === 'universe' ? 'cur' : ''}">🌌 宇宙</a>`;
     const danId = v.kind === 'dan' ? v.danId : v.kind === 'world' ? v.world.dan : null;
     if (danId) {
@@ -155,7 +157,8 @@ export class UI {
     $('#evlist').innerHTML = list.length ? list.map((e) => this.evHtml(e)).join('') : '<div class="ev minor-ev">まだ何も起きていません…</div>';
   }
   onEvent(e) {
-    if (this.app.settings.toasts && prioOf(e) >= 60) this.toast(e);
+    if (this.app.settings.toasts && prioOf(e) >= 84 && e.major) this.cutin(e);
+    else if (this.app.settings.toasts && prioOf(e) >= 60) this.toast(e);
     if (!this.evMatch(e)) return;
     const box = $('#evlist');
     if (box.firstElementChild && !box.firstElementChild.dataset.w) box.innerHTML = '';
@@ -185,6 +188,78 @@ export class UI {
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 6500);
   }
   // 場面の切り替えを目立たなくする短いフェード
+  // 大きな出来事のカットイン: 斜めの帯が横切り、関係するキャラの絵が出る
+  cutin(e) {
+    this.cutQ ??= [];
+    if (this.cutQ.length >= 2) return this.toast(e);
+    this.cutQ.push(e);
+    if (this.cutQ.length === 1) this.nextCutin();
+  }
+  nextCutin() {
+    const e = this.cutQ[0];
+    if (!e) return;
+    const { model } = this.app;
+    const icon = [...e.text][0];
+    const text = e.text.replace(/^\S+\s*/, '');
+    const faces = (e.ids || []).map((id) => model.charById.get(id)).filter((c) => c?.img).slice(0, 3);
+    const box = $('#cutin');
+    box.className = /^[🐉💥🛡🏚🔥]/u.test(e.text) ? 'danger' : 'joy';
+    box.innerHTML = `<div class="band"><span class="ic">${icon}</span><div class="tx">${escapeHtml(text)}</div>`
+      + `<div class="faces">${faces.map((c) => `<img src="${escapeHtml(c.img)}" alt="">`).join('')}</div></div>`;
+    box.hidden = false;
+    this.app.sound.play('cutin');
+    setTimeout(() => {
+      box.hidden = true;
+      this.cutQ.shift();
+      setTimeout(() => this.nextCutin(), 250);
+    }, 3000);
+  }
+  // 画面が切り替わる時に、星が流れるワープ
+  warp(inward) {
+    const cv = $('#warp');
+    if (this.app.settings.gfx === 'low') return this.flash();
+    const ctx = cv.getContext('2d');
+    const W = (cv.width = innerWidth), H = (cv.height = innerHeight);
+    const stars = Array.from({ length: 150 }, () => ({ a: Math.random() * Math.PI * 2, r: Math.random(), s: 0.4 + Math.random() * 1.2 }));
+    const t0 = performance.now(), dur = 640;
+    cancelAnimationFrame(this.warpRaf);
+    cv.style.display = 'block';
+    const draw = (now) => {
+      const f = Math.min(1, (now - t0) / dur);
+      ctx.clearRect(0, 0, W, H);
+      // 真ん中を明るく、まわりを暗くして、最後に消える
+      const k = Math.sin(f * Math.PI);
+      ctx.fillStyle = `rgba(4,6,22,${k * 0.92})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.lineCap = 'round';
+      const R = Math.hypot(W, H) * 0.6;
+      for (const st of stars) {
+        const p = inward ? (st.r + f * st.s) % 1 : 1 - ((st.r + f * st.s) % 1);
+        const r0 = p * p * R, r1 = r0 + (40 + 320 * k) * st.s * (0.2 + p);
+        ctx.strokeStyle = `rgba(190,215,255,${k * 0.85})`;
+        ctx.lineWidth = 0.6 + p * 2;
+        ctx.beginPath();
+        ctx.moveTo(W / 2 + Math.cos(st.a) * r0, H / 2 + Math.sin(st.a) * r0);
+        ctx.lineTo(W / 2 + Math.cos(st.a) * r1, H / 2 + Math.sin(st.a) * r1);
+        ctx.stroke();
+      }
+      if (f < 1) this.warpRaf = requestAnimationFrame(draw);
+      else cv.style.display = 'none';
+    };
+    this.warpRaf = requestAnimationFrame(draw);
+  }
+  // 世界線に入った時の大きなタイトル
+  titleCard(w) {
+    const el = $('#titlecard');
+    el.innerHTML = `<small>${escapeHtml(w.id)} ・ 世界団 ${escapeHtml(w.dan)}</small><h1>${escapeHtml(w.name)}</h1><p>${escapeHtml(w.yomi)}</p>`;
+    el.hidden = false;
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
+    clearTimeout(this.titleT);
+    this.titleT = setTimeout(() => { el.hidden = true; }, 2600);
+  }
+
   flash() {
     const el = $('#fade');
     el.classList.remove('on');
