@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=36';
-import { prioOf } from './director.js?v=36';
-import { fmtTime, escapeHtml, colorOf, luminance, ultraUp } from './util.js?v=36';
-import { typeSummary, TYPE_COLOR } from './types.js?v=36';
+import { CATS } from './sim.js?v=37';
+import { prioOf } from './director.js?v=37';
+import { fmtTime, escapeHtml, colorOf, luminance, ultraUp } from './util.js?v=37';
+import { typeSummary, TYPE_COLOR } from './types.js?v=37';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -257,15 +257,17 @@ export class UI {
     this.warpRaf = requestAnimationFrame(draw);
   }
   // 世界線に入った時の大きなタイトル
-  titleCard(w) {
+  // brief: 宇宙から観戦中に、どの世界線かを画面の上の方に一瞬だけ出す
+  titleCard(w, brief = false) {
     const el = $('#titlecard');
+    el.classList.toggle('brief', brief);
     el.innerHTML = `<small>${escapeHtml(w.id)} ・ 世界団 ${escapeHtml(w.dan)}</small><h1>${escapeHtml(w.name)}</h1><p>${escapeHtml(w.yomi)}</p>`;
     el.hidden = false;
     el.classList.remove('on');
     void el.offsetWidth;
     el.classList.add('on');
     clearTimeout(this.titleT);
-    this.titleT = setTimeout(() => { el.hidden = true; }, 2600);
+    this.titleT = setTimeout(() => { el.hidden = true; }, brief ? 1500 : 2600);
   }
 
   flash() {

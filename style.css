@@ -120,12 +120,14 @@ kbd { display: inline-block; min-width: 18px; text-align: center; padding: 0 4px
 .dan-label small { font-size: 14px; color: #cdd3ff; }
 .dan-label span { display: block; font-size: 13px; color: #cdd3ff; }
 .dan-label.hot { scale: 1.15; }
-.world-label { text-align: center; color: #fff; text-shadow: 0 1px 4px #000, 0 0 2px #000; font-size: 11px; transition: scale .15s; }
+.world-label { text-align: center; color: #fff; text-shadow: 0 1px 4px #000, 0 0 2px #000; font-size: 11px; transition: scale .15s, opacity .2s; }
 .world-label b { font-size: 13px; display: block; }
 .world-label small, .world-label span { display: none; color: #c8ceff; font-size: 11px; }
 .world-label.hot { scale: 1.25; z-index: 5; background: rgba(10, 12, 30, .8); padding: 4px 10px; border-radius: 10px; }
 .world-label.hot small, .world-label.hot span { display: block; }
-.letter-label { font-size: 60px; font-weight: 800; color: rgba(160, 180, 255, .16); }
+.letter-label { font-size: 60px; font-weight: 800; color: rgba(160, 180, 255, .16); transition: opacity .2s; }
+/* 他の世界線の地面に重なっている文字 */
+.on-ground:not(.hot) { opacity: 0; }
 .portal-label { background: rgba(10, 12, 30, .75); color: #fff; padding: 3px 10px; border-radius: 999px; font-size: 13px; border: 1px solid rgba(255,255,255,.25); }
 .portal-label.hot { background: var(--accent); color: #222; }
 .clabel { font-size: 11px; color: #fff; background: rgba(10, 12, 30, .6); padding: 1px 7px 1px 2px; border-radius: 999px; display: flex; align-items: center; gap: 3px; }
@@ -282,6 +284,10 @@ body.cine::before, body.cine::after { height: 7vh; }
 #titlecard.on { animation: titleIn 2.6s ease-out both; }
 #titlecard h1 { margin: 2px 0; font-size: 58px; font-weight: 800; letter-spacing: .32em; text-indent: .32em; }
 #titlecard small, #titlecard p { margin: 0; font-size: 14px; letter-spacing: .24em; opacity: .9; }
+#titlecard.brief { top: 11%; }
+#titlecard.brief.on { animation-duration: 1.5s; }
+#titlecard.brief h1 { font-size: 30px; letter-spacing: .2em; text-indent: .2em; }
+#titlecard.brief small, #titlecard.brief p { font-size: 12px; }
 @keyframes titleIn {
   0% { opacity: 0; letter-spacing: .1em; transform: translateY(10px); }
   18% { opacity: 1; transform: none; }

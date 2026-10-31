@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=36';
-import { TYPE_COLOR } from './types.js?v=36';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=36';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=37';
+import { TYPE_COLOR } from './types.js?v=37';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=37';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -13,8 +13,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=36';
-import { CATS } from './sim.js?v=36';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=37';
+import { CATS } from './sim.js?v=37';
 
 // グラフィック設定 (低・中・高・超高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -594,6 +594,7 @@ export class ClusterView extends BaseView {
     this.scene.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: '#8fa0ff', transparent: true, opacity: 0.35 })));
 
     // 英字グループの目印
+    this.letters = [];
     const groups = new Map();
     for (const wid of dan.worlds) {
       const w = model.worlds.get(wid);
@@ -606,6 +607,7 @@ export class ClusterView extends BaseView {
       const lb = label(escapeHtml(letter), 'letter-label');
       lb.position.set(c.x, c.y - 10, c.z);
       this.scene.add(lb);
+      this.letters.push(lb);
     }
 
     const hue = new THREE.Color(dan.color);
@@ -672,6 +674,7 @@ export class ClusterView extends BaseView {
     this.frameShot(dt);
     super.update(dt);
     this.stageCamera(dt);
+    if (this.ultra) this.hideLabelsOnGround(dt);
     if ((this.refreshT -= dt) < 0) { this.refresh(); this.refreshT = 0.5; }
     for (const n of this.nodes.values()) n.g.rotation.y += dt * (this.ultra ? 0.05 : 0.2);
   }
@@ -714,7 +717,11 @@ export class ClusterView extends BaseView {
       const off = cam.position.clone().sub(tgt).setLength(this.spaceShot().dist);
       tgt.copy(p);
       cam.position.copy(p).add(off);
-      return;
+    }
+    // 映す世界線が変わったら、どこなのかを一瞬出す
+    if (wid !== this.titledWorld) {
+      this.titledWorld = wid;
+      this.app.ui.titleCard(this.app.model.worlds.get(wid), true);
     }
     const d = p.sub(tgt).multiplyScalar(Math.min(1, dt * 4));
     tgt.add(d);
@@ -733,6 +740,50 @@ export class ClusterView extends BaseView {
     if (c && !app.sim.transitOf(c) && this.nodes.has(c.world)) return this.nodes.get(c.world).mini.localToWorld(new THREE.Vector3(c.x, 3.5, c.z));
     const n = this.watch && this.nodes.get(this.watch.world);
     return n ? n.mini.localToWorld(new THREE.Vector3(this.watch.x, 0, this.watch.z)) : null;
+  }
+  // 島の地面に重なる他の世界線の文字を隠す
+  hideLabelsOnGround(dt) {
+    if ((this.groundT = (this.groundT ?? 0) - dt) > 0) return;
+    this.groundT = 0.1;
+    const W = innerWidth, H = innerHeight, cam = this.camera, v = new THREE.Vector3();
+    const screen = (p, dy = 0) => {
+      v.copy(p);
+      v.y += dy;
+      v.project(cam);
+      return v.z < 1 ? { x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H } : null;
+    };
+    // 画面に大きく映っている島を、画面上の楕円として求める
+    const islands = [];
+    for (const n of this.nodes.values()) {
+      if (!n.g.visible) continue;
+      const rim = [];
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        rim.push(screen(new THREE.Vector3(n.g.position.x + Math.cos(a) * n.r * 0.8, n.g.position.y, n.g.position.z + Math.sin(a) * n.r * 0.8)));
+      }
+      if (rim.some((q) => !q)) continue;
+      const xs = rim.map((q) => q.x), ys = rim.map((q) => q.y);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      if (x1 - x0 < 50) continue; // 小さな島は文字をふさがない
+      islands.push({ n, x: (x0 + x1) / 2, y: (y0 + y1) / 2, a: (x1 - x0) / 2, b: Math.max(y1 - y0, 1) / 2 });
+    }
+    // 文字の大きさの分 (hw, hh) だけ広げて重なりを調べる
+    const onGround = (q, own, hw, hh) => !!q && islands.some((o) => o.n !== own && ((q.x - o.x) / (o.a + hw)) ** 2 + ((q.y - o.y) / (o.b + hh)) ** 2 < 1);
+    const mark = (lb, hide) => {
+      if (lb.onGround === hide) return;
+      lb.onGround = hide;
+      lb.inner.classList.toggle('on-ground', hide);
+    };
+    for (const n of this.nodes.values()) {
+      const q = screen(n.g.position, n.r * 1.5 + 1);
+      if (q) q.y -= 12; // 文字は基準の点の上側に出る
+      mark(n.lb, onGround(q, n, 42, 12));
+    }
+    for (const lb of this.letters) {
+      const q = screen(lb.position);
+      if (q) q.y -= 35;
+      mark(lb, onGround(q, null, 25, 30));
+    }
   }
   // 今映している世界線
   spaceWorld() {

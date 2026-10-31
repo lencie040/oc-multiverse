@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=36';
-import { Sim } from './sim.js?v=36';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=36';
-import { UI } from './ui.js?v=36';
-import { Director } from './director.js?v=36';
-import { Sound, moodOf } from './audio.js?v=36';
-import { MIN_PER_DAY, nowGameT, ultraUp } from './util.js?v=36';
-import { Sync } from './sync.js?v=36';
-import { PostFX } from './fx.js?v=36';
+import { buildModel } from './model.js?v=37';
+import { Sim } from './sim.js?v=37';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=37';
+import { UI } from './ui.js?v=37';
+import { Director } from './director.js?v=37';
+import { Sound, moodOf } from './audio.js?v=37';
+import { MIN_PER_DAY, nowGameT, ultraUp } from './util.js?v=37';
+import { Sync } from './sync.js?v=37';
+import { PostFX } from './fx.js?v=37';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -21,7 +21,7 @@ const pixelRatio = (q) => Math.min(devicePixelRatio, PIXEL_RATIO[q] ?? 2, Math.s
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=36').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=37').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
