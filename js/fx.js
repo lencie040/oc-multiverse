@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { seeded, hashStr } from './util.js?v=34';
+import { seeded, hashStr } from './util.js?v=35';
 
 // ---------- ポストエフェクト ----------
 // 1.0 を超える光 (発光・太陽・星) だけをにじませるので、キャラのイラストの白は光らない

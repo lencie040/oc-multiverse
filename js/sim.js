@@ -1,7 +1,7 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=34';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost } from './model.js?v=34';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=34';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=35';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost } from './model.js?v=35';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=35';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -1643,12 +1643,14 @@ export class Sim {
 
   restore(s) {
     if (!s || s.v !== 1) return false;
-    const map = new Map(s.chars);
-    if (map.size !== this.m.chars.length || this.m.chars.some((c) => !map.has(c.id) || !(this.m.worlds.has(map.get(c.id).world) || map.get(c.id).world === TRANSIT))) return false;
+    // キャラや世界線を増やしても世界を消さないよう、合う人だけ引き継ぐ。保存にない新キャラは最初の状態のまま
+    const map = new Map(s.chars.filter(([id, d]) => this.m.charById.has(id) && (this.m.worlds.has(d.world) || d.world === TRANSIT)));
+    if (!map.size) return false;
     if (s.clock !== 'real') {
       // 1日20分だったころの保存データ: 時刻が合わないので、記録と友好度だけ引き継いで今の時刻から始める
       for (const c of this.m.chars) {
         const d = map.get(c.id);
+        if (!d) continue;
         for (const k of ['kills', 'downs', 'travels', 'treasures', 'raidWins', 'contestWins', 'friends']) if (d[k] != null) c[k] = d[k];
       }
       return true;
@@ -1679,6 +1681,7 @@ export class Sim {
     this.report = s.report || null;
     for (const c of this.m.chars) {
       const d = map.get(c.id);
+      if (!d) continue;
       Object.assign(c, d);
       if (c.act && c.act.until === 'INF') c.act.until = Infinity;
       if (c.act && c.act.until === null) c.act.until = Infinity;

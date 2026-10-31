@@ -36,7 +36,9 @@ def type_chart():
 
 
 # キャラがいない等でシートから世界団を決められない世界線の指定
-WORLD_DAN = {"B32": "𡻦"}  # 勉界
+WORLD_DAN = {"B32": "𡻦", "A5if": "𡻦"}  # 勉界, 零界IF
+# シートの世界線一覧にまだない世界線 (世界線名, 読み方, 汎異記号)。シートに載ればそちらが優先される
+EXTRA_WORLDS = [["零界IF", "れいかいIF", "A5if"]]
 
 
 def num(s):
@@ -54,7 +56,7 @@ def dan_of(raw):
 def main():
     chars_raw, map_raw = fetch(CHAR_GID)[1:], fetch(MAP_GID)[1:]
     worlds = {}
-    for name, yomi, hani in map_raw:
+    for name, yomi, hani in map_raw + EXTRA_WORLDS:
         if not hani or hani in worlds:
             continue
         m = re.match(r"(.+?)\((.+)\)", name)  # 菓界×夢界(汽界)
