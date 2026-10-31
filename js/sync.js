@@ -34,7 +34,8 @@ export class Sync {
   // 起動時: 保存された世界を読む。undefined = 同期を使えない、null = まだ保存がない
   async load() {
     // ?solo を付けると同期せずに動く (表示の確認用。みんなの世界に影響しない)
-    if (new URLSearchParams(location.search).has('solo')) return undefined;
+    // 手元の確認用サーバーは、公開前の版がみんなの世界を上書きしないよう必ず同期しない
+    if (new URLSearchParams(location.search).has('solo') || ['localhost', '127.0.0.1'].includes(location.hostname)) return undefined;
     try {
       const { createClient } = await timeout(import(LIB), 8000);
       this.sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
