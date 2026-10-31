@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { seeded, hashStr } from './util.js?v=35';
+import { seeded, hashStr } from './util.js?v=36';
 
 // ---------- ポストエフェクト ----------
 // 1.0 を超える光 (発光・太陽・星) だけをにじませるので、キャラのイラストの白は光らない
@@ -345,6 +345,33 @@ export function atmosphere(color, { shell = false, power = 3, k = 1.3 } = {}) {
         float d = clamp(abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0);
         float a = ${shell ? 'pow(d, power) * smoothstep(0.0, 0.5, d)' : 'pow(1.0 - d, power)'};
         gl_FragColor = vec4(col * a * k, a);
+        #include <colorspace_fragment>
+      }`,
+  });
+}
+
+// 球の中にたまる霧: 視線が球の中を通る長さの分だけ濃くなる
+export function hazeMaterial(color) {
+  return new THREE.ShaderMaterial({
+    uniforms: { col: { value: new THREE.Color(color) } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    vertexShader: `
+      varying vec3 vP, vC; varying float vR;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vP = mv.xyz; vC = (modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz; vR = length(vP - vC);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform vec3 col; varying vec3 vP, vC; varying float vR;
+      void main() {
+        // カメラが外にいる時は手前の面だけ、中にいる時は奥の面だけで1回ずつ描く
+        bool inside = dot(vC, vC) < vR * vR;
+        if (!inside && !gl_FrontFacing) discard;
+        vec3 rd = normalize(vP);
+        float b = dot(rd, vC);
+        float h = sqrt(max(0.0, vR * vR - dot(vC, vC) + b * b));
+        float chord = max(0.0, b + h - max(b - h, 0.0)) / (2.0 * vR);
+        gl_FragColor = vec4(col, (1.0 - exp(-chord * 1.6)) * 0.42);
         #include <colorspace_fragment>
       }`,
   });

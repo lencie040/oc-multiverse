@@ -1,5 +1,5 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=35';
+import { weighted } from './util.js?v=36';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
@@ -12,6 +12,8 @@ export function prioOf(e) {
 }
 
 const now = () => performance.now() / 1000;
+// 推しを映す時間の割合の目安 (直近数分)。残りは全体の見どころを流す
+const OSHI_SHARE = 0.55, OSHI_CAP = 0.75;
 
 // 場面ごとのカメラ: dist=距離, elev=見下ろす角度(ラジアン), orbit=回り込む速さ
 const SHOTS = {
@@ -39,7 +41,34 @@ export class Director {
     this.shot = null;
     this.raidId = null;
     this.vary = { k: 1, dir: 1 };
+    this.takeAt = 0;
+    this.watched = { oshi: 0, rest: 0 };
+    this.lastTick = now();
     app.sim.listen((e) => this.onEvent(e));
+  }
+
+  isOshi(id) { return this.app.settings.oshi.includes(id); }
+  // 直近の数分のうち、推しを映していた時間の割合
+  get oshiShare() {
+    const { oshi, rest } = this.watched;
+    return oshi + rest ? oshi / (oshi + rest) : 0;
+  }
+  // 推しの様子を映す。割合が足りていない時だけ順番に回す (寝ている推しは起こさない)
+  pickOshi() {
+    const { app } = this;
+    const { sim, model } = app;
+    if (this.oshiShare >= OSHI_SHARE) return false;
+    const list = app.settings.oshi.map((id) => model.charById.get(id)).filter((c) => c && c.state !== 'sleep' && c.state !== 'camp');
+    const c = weighted(list.map((x) => [x, (this.interest(x) || 1) * (x.id === this.lastOshi && list.length > 1 ? 0.3 : 1)]));
+    if (!c) return false;
+    this.lastOshi = c.id;
+    this.newTake();
+    app.following = true;
+    app.selectChar(c.id, { focus: true });
+    this.prio = 30;
+    this.until = now() + 15;
+    app.ui.caption(`🎬 ⭐ ${c.name}の様子：${sim.displayAct(c).text}`);
+    return true;
   }
 
   toggle(force) {
@@ -53,26 +82,31 @@ export class Director {
 
   onEvent(e) {
     if (!this.on) return;
-    const p = prioOf(e);
+    let p = prioOf(e);
+    // 推しの出来事は小さくても映す (映しすぎている間は普通の扱いに戻す)
+    const fan = this.oshiShare < OSHI_CAP ? e.ids.find((id) => this.isOshi(id)) : null;
+    if (fan) p = Math.max(p, 40) + 25;
     if (p < 30) return;
     // 撮影中のシーンより十分に見どころがあれば切り替える
     if (now() < this.until && p < this.prio + 20) return;
-    this.show(e, p);
+    this.show(e, p, fan);
   }
 
   // 場面が変わるたびに、距離と回る向きに少し変化をつける
   newTake(raidId = null) {
     this.raidId = raidId;
+    this.takeAt = now();
     this.vary = { k: 0.85 + Math.random() * 0.35, dir: Math.random() < 0.5 ? -1 : 1 };
   }
 
-  show(e, p) {
+  show(e, p, fan = null) {
     const { app } = this;
     const raid = app.sim.raidAt(e.world);
     this.newTake(e.ids.length ? null : raid?.id);
     if (e.ids.length) {
+      if (fan) this.lastOshi = fan;
       app.following = true;
-      app.selectChar(e.ids[0], { focus: true });
+      app.selectChar(fan ?? e.ids[0], { focus: true });
     } else {
       app.stopFollow();
       app.selectChar(null);
@@ -84,9 +118,26 @@ export class Director {
     app.ui.caption(`🎬 ${e.text}`);
   }
 
+  // そのキャラの今の見どころ度 (0 = 映すほどでもない)
+  interest(c) {
+    const { sim } = this.app;
+    if (c.transit) return 6;
+    if (c.act.kind === 'raid') return 7;
+    if (c.act.kind === 'defend') return 6;
+    if (c.act.kind === 'dig') return 5;
+    if (c.act.kind === 'contest') return 6;
+    if (c.act.kind === 'party') return sim.parties.some((p) => p.hosts.includes(c.id)) ? 8 : 3;
+    if (c.act.kind === 'meet') return 1.5;
+    if (c.act.kind === 'fight') return 5;
+    if (c.act.kind === 'chat') return 3;
+    if (c.trip) return 3;
+    return c.state === 'ok' ? 0.15 : 0.02; // 深夜に誰も起きていない時は寝顔を映す
+  }
+
   pickIdle() {
     const { app } = this;
     const { sim, model } = app;
+    if (this.pickOshi()) return;
     // 防衛戦中なら、戦っている人を映す
     const hd = sim.hordes[0];
     if (hd && Math.random() < 0.6) {
@@ -118,18 +169,7 @@ export class Director {
     const cands = [];
     for (const c of model.chars) {
       if (c.partyLeader || c.state === 'down') continue;
-      let w = 0;
-      if (c.transit) w = 6;
-      else if (c.act.kind === 'raid') w = 7;
-      else if (c.act.kind === 'defend') w = 6;
-      else if (c.act.kind === 'dig') w = 5;
-      else if (c.act.kind === 'contest') w = 6;
-      else if (c.act.kind === 'party') w = app.sim.parties.some((p) => p.hosts.includes(c.id)) ? 8 : 3;
-      else if (c.act.kind === 'meet') w = 1.5;
-      else if (c.act.kind === 'fight') w = 5;
-      else if (c.act.kind === 'chat') w = 3;
-      else if (c.trip) w = 3;
-      else if (c.state === 'ok') w = 0.15;
+      const w = this.interest(c);
       if (!w) continue;
       cands.push([c, w * (c.img ? 2 : 1)]);
     }
@@ -145,11 +185,19 @@ export class Director {
 
   tick() {
     if (!this.on) return;
-    // 移動中のキャラを映している間は、到着するまで他の小さな出来事に切り替えない
     const { app } = this;
+    // 映している時間を数える。古い分は数分で薄れていく
+    const dt = Math.min(1, now() - this.lastTick);
+    this.lastTick = now();
+    const fade = Math.exp(-dt / 240);
+    this.watched.oshi *= fade; this.watched.rest *= fade;
+    this.watched[app.selected && this.isOshi(app.selected) ? 'oshi' : 'rest'] += dt;
+    // 移動中のキャラを映している間は、到着するまで他の小さな出来事に切り替えない
+    // ただし移動は数分かかるので、推しを流したい時は推し以外を長く追わない
     const sel = app.following && app.selected && app.model.charById.get(app.selected);
     const flying = !!(sel && app.sim.transitOf(sel));
-    if (flying) { this.until = Math.max(this.until, now() + 4); this.prio = Math.max(this.prio, 60); }
+    const hold = !app.settings.oshi.length || (this.isOshi(sel?.id) ? this.oshiShare < OSHI_CAP : now() - this.takeAt < 40);
+    if (flying && hold) { this.until = Math.max(this.until, now() + 4); this.prio = Math.max(this.prio, 60); }
     // 到着したらしばらくそのキャラを映し続ける
     if (this.wasFlying && !flying && sel) { this.until = Math.max(this.until, now() + 8); this.newTake(); }
     this.wasFlying = flying;

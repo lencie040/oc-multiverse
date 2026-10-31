@@ -1,19 +1,19 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=35';
-import { Sim } from './sim.js?v=35';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=35';
-import { UI } from './ui.js?v=35';
-import { Director } from './director.js?v=35';
-import { Sound, moodOf } from './audio.js?v=35';
-import { MIN_PER_DAY, nowGameT } from './util.js?v=35';
-import { Sync } from './sync.js?v=35';
-import { PostFX } from './fx.js?v=35';
+import { buildModel } from './model.js?v=36';
+import { Sim } from './sim.js?v=36';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=36';
+import { UI } from './ui.js?v=36';
+import { Director } from './director.js?v=36';
+import { Sound, moodOf } from './audio.js?v=36';
+import { MIN_PER_DAY, nowGameT, ultraUp } from './util.js?v=36';
+import { Sync } from './sync.js?v=36';
+import { PostFX } from './fx.js?v=36';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
 // グラフィック設定ごとの描画解像度
-const PIXEL_RATIO = { low: 0.75, mid: 1, high: 1.5, ultra: 2 };
+const PIXEL_RATIO = { low: 0.75, mid: 1, high: 1.5, ultra: 2, max: 2 };
 // 重さのほとんどは描くピクセルの数で決まるので、大きな画面でも 2560×1440 ぶんまでに抑える
 const MAX_PIXELS = 3.7e6;
 const pixelRatio = (q) => Math.min(devicePixelRatio, PIXEL_RATIO[q] ?? 2, Math.sqrt(MAX_PIXELS / (innerWidth * innerHeight)));
@@ -21,7 +21,7 @@ const pixelRatio = (q) => Math.min(devicePixelRatio, PIXEL_RATIO[q] ?? 2, Math.s
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=35').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=36').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -34,7 +34,7 @@ class App {
     // 閉じていた間の出来事を進めて、現実の時刻に追いつく (同期中はホストが進める)
     if (this.sync.role === 'solo') this.sim.catchUp();
 
-    this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true, gfx: 'high', ui: 1 };
+    this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true, gfx: 'high', ui: 1, oshi: [] };
     try { Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* 保存できない環境 */ }
     this.sound = new Sound();
     this.sim.listen((e) => { this.eventSound(e); this.view?.onSimEvent?.(e); });
@@ -97,17 +97,27 @@ class App {
   }
   // 高・最高はブルームと色調整を掛ける
   applyPost() {
-    const q = this.settings.gfx, want = q === 'high' || q === 'ultra';
+    const q = this.settings.gfx, want = q === 'high' || ultraUp(q);
     if (this.post && !want) { this.post.dispose(); this.post = null; }
     if (want && !this.post) this.post = new PostFX(this.renderer);
     this.post?.resize();
   }
   saveSettings() {
-    const { gfx, ui, spaceWatch } = this.settings;
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ gfx, ui, spaceWatch })); } catch (e) { /* 保存できない環境 */ }
+    const { gfx, ui, spaceWatch, oshi } = this.settings;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ gfx, ui, spaceWatch, oshi })); } catch (e) { /* 保存できない環境 */ }
   }
-  // 最高設定の「宇宙から観戦」: おまかせ観戦で世界線の中に入らず、世界団マップから透けた世界線を映す
-  get spaceWatch() { return !!(this.director?.on && this.settings.gfx === 'ultra' && this.settings.spaceWatch); }
+  // 推しキャラの登録と解除 (この画面を見ている人だけの設定で、みんなの世界には影響しない)
+  toggleOshi(id) {
+    const { oshi } = this.settings;
+    if (oshi.includes(id)) oshi.splice(oshi.indexOf(id), 1);
+    else oshi.push(id);
+    this.saveSettings();
+    this.ui.renderOshi();
+    this.ui.lastInfo = '';
+    this.ui.renderInfo();
+  }
+  // 超高以上の「宇宙から観戦」: おまかせ観戦で世界線の中に入らず、世界団マップから透けた世界線を映す
+  get spaceWatch() { return !!(this.director?.on && ultraUp(this.settings.gfx) && this.settings.spaceWatch); }
   toggleSpaceWatch() {
     this.settings.spaceWatch = !this.settings.spaceWatch;
     this.saveSettings();
@@ -258,10 +268,14 @@ class App {
   // 今見ている場所に合わせて曲を変える (世界線ごとに別のメロディ、レイド中はバトル曲)
   updateMusic() {
     const v = this.view;
-    if (v.kind !== 'world') return this.sound.setMood('space', false, v.kind === 'dan' ? 'dan:' + v.danId : 'space');
-    const r = this.sim.raidAt(v.worldId) || this.sim.hordeAt(v.worldId);
+    // 宇宙から観戦中は、映している世界線の曲を流す (移動を映している間は直前の曲のまま)
+    if (!this.spaceWatch) this.musicWorld = null;
+    else if (v.kind === 'dan' && !v.framing) this.musicWorld = v.spaceWorld() ?? this.musicWorld;
+    const wid = (this.spaceWatch && this.musicWorld) || v.worldId;
+    if (!wid) return this.sound.setMood('space', false, v.kind === 'dan' ? 'dan:' + v.danId : 'space');
+    const r = this.sim.raidAt(wid) || this.sim.hordeAt(wid);
     const h = this.sim.hour;
-    this.sound.setMood(r ? 'battle' : moodOf(v.world), h >= 21 || h < 5, r ? 'raid:' + r.id : v.worldId);
+    this.sound.setMood(r ? 'battle' : moodOf(this.model.worlds.get(wid)), h >= 21 || h < 5, r ? 'raid:' + r.id : wid, this.spaceWatch);
   }
   eventSound(e) {
     const here = this.view?.kind === 'world' && e.world === this.view.worldId;

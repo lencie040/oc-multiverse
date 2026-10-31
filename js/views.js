@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=35';
-import { TYPE_COLOR } from './types.js?v=35';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, batchStatic } from './fx.js?v=35';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=36';
+import { TYPE_COLOR } from './types.js?v=36';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=36';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -13,12 +13,12 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY } from './util.js?v=35';
-import { CATS } from './sim.js?v=35';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=36';
+import { CATS } from './sim.js?v=36';
 
-// グラフィック設定 (低・中・高・最高)
+// グラフィック設定 (低・中・高・超高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
-const GFX_STARS = { low: 0.4, mid: 0.7, high: 1, ultra: 1.6 };
+const GFX_STARS = { low: 0.4, mid: 0.7, high: 1, ultra: 1.6, max: 1.6 };
 
 // 外側は CSS2DRenderer が位置決めに使うので、ホバー時の拡大などは内側に掛ける
 function label(html, cls) {
@@ -64,6 +64,13 @@ function dotTexture(soft = true) {
   return t;
 }
 const DOT = dotTexture();
+// 昼の明るさ (夜 0 〜 昼 1)
+const daylight = (h) => (h < 5 || h > 20 ? 0 : h < 7 ? (h - 5) / 2 : h > 18 ? (20 - h) / 2 : 1);
+// 寝ている人・倒れている人のコマはやや暗くする
+const sleepTint = (c) => (c.state === 'down' ? '#8a8a8a' : c.state === 'sleep' || c.state === 'camp' ? '#9aa6d0' : '#ffffff');
+
+// カメラの移動がこれより遠いと、宇宙から観戦中はワープを見せる
+const WARP_DIST = 180;
 
 // ---------- 共通の土台 ----------
 class BaseView {
@@ -77,6 +84,7 @@ class BaseView {
     this.controls.screenSpacePanning = false;
     this.pickables = [];
     this.owned = []; // この画面だけで使うテクスチャ (閉じる時に片付ける)
+    this.occluders = []; // おまかせ観戦中、邪魔なら隠す球 ({ g, lb, r, fade })
     this.quality = gfx();
     this.raycaster = new THREE.Raycaster();
     this.hovered = null;
@@ -89,7 +97,7 @@ class BaseView {
   spaceBackdrop(key, cols, fallback) {
     if (this.quality === 'low') { this.scene.add(fallback); return; }
     this.scene.background = nebulaTexture(this.app.renderer, key, cols);
-    this.stars = starLayer(this.quality === 'ultra' ? 5200 : this.quality === 'high' ? 3800 : 2400, 20000, key);
+    this.stars = starLayer(ultraUp(this.quality) ? 5200 : this.quality === 'high' ? 3800 : 2400, 20000, key);
     this.scene.add(this.stars);
     if (this.quality !== 'mid') {
       this.dust = spaceDust(600, 140);
@@ -156,7 +164,7 @@ class BaseView {
   // おまかせ観戦のカメラワーク: 距離・角度をなめらかに合わせ、ゆっくり回り込む
   cinematic(dt) {
     const shot = this.app.director?.on && this.app.director.shot;
-    if (!shot) return;
+    if (!shot || this.framing) return;
     if (this.userHold > 0) { this.userHold -= dt; return; }
     const tgt = this.controls.target;
     const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(tgt));
@@ -245,7 +253,7 @@ class BaseView {
     const c = app.model.charById.get(app.selected);
     if (!app.isShowing(app.viewFor(c))) { app.goToChar(c, true); return true; }
     const tk = this.tokens?.get(c.transit ? c.id : c.partyLeader);
-    if (!tk) return;
+    if (!tk || this.travelAnchors?.()) return;
     const tgt = this.controls.target;
     const p = tk.g.position;
     // マップに切り替わった直後や遠く離れている時は、すぐにキャラの近くへカメラを移す
@@ -262,6 +270,138 @@ class BaseView {
     const delta = p.clone().sub(tgt);
     tgt.add(delta);
     this.camera.position.add(delta);
+  }
+
+  // ---------- おまかせ観戦のカメラ (世界団マップ・宇宙マップ共通) ----------
+  // 画面のうち、パネルやバーに隠れていない範囲 (cx, cy は中心、fx, fy は画面に対する割合)
+  clearArea() {
+    const rect = (id) => { const r = document.getElementById(id)?.getBoundingClientRect(); return r?.width ? r : null; };
+    const W = innerWidth, H = innerHeight;
+    const l = rect('events')?.right ?? 0, r = rect('info')?.left ?? W;
+    const t = Math.max(rect('top')?.bottom ?? 0, H * 0.07), b = Math.min(rect('help')?.top ?? H, H * 0.93);
+    return { cx: (l + r) / W - 1, cy: 1 - (t + b) / H, fx: Math.max(0.3, (r - l) / W), fy: Math.max(0.3, (b - t) / H) };
+  }
+  // 半分の幅 hw・半分の高さ hh の物が、隠れていない範囲に収まるカメラの距離
+  fitDist(hw, hh, area) {
+    const tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    return Math.max(hw / (tan * this.camera.aspect * area.fx), hh / (tan * area.fy));
+  }
+  // 移動の構図: 出発 A と到着 B を結ぶ線を真横から見て、2つが同時に入る距離まで引く
+  frameTravel({ key, world, A, B, r: tok }, dt) {
+    this.travelFocus = [A, B, tok].filter(Boolean);
+    if (this.userHold > 0) { this.userHold -= dt; return; }
+    const cam = this.camera, tgt = this.controls.target, area = this.clearArea();
+    const mid = A.p.clone().add(B.p).multiplyScalar(0.5);
+    const len = A.p.distanceTo(B.p) || 1;
+    const u = B.p.clone().sub(A.p).divideScalar(len);
+    const Y = new THREE.Vector3(0, 1, 0);
+    const side = new THREE.Vector3().crossVectors(u, Y);
+    if (side.lengthSq() < 1e-4) side.set(1, 0, 0);
+    side.normalize();
+    const lift = new THREE.Vector3().crossVectors(side, u);
+    const place = (a) => {
+      const dir = side.clone().multiplyScalar(Math.cos(a)).addScaledVector(lift, Math.sin(a));
+      const right = new THREE.Vector3().crossVectors(Y, dir).normalize(), up = new THREE.Vector3().crossVectors(dir, right);
+      const reach = (axis) => Math.max(...[A, B].map((n) => Math.abs(n.p.clone().sub(mid).dot(axis)) + n.r));
+      return mid.clone().addScaledVector(dir, this.fitDist(reach(right), reach(up) + len * 0.12, area) * 1.06);
+    };
+    let k = 1 - Math.exp(-dt * 2.5);
+    if (this.travelKey !== key) {
+      if (!this.readyToCut(mid, dt)) return;
+      this.travelKey = key;
+      this.travelT = 0;
+      this.travelAng = this.clearestAngle(place, [A, B]);
+      k = 1; // 新しい移動はそのまま切り替える
+    }
+    this.shotWorld = world;
+    this.travelT += dt;
+    tgt.lerp(mid, k);
+    cam.position.lerp(place(this.travelAng + Math.sin(this.travelT * 0.22) * 0.07), k);
+  }
+  // 宇宙から観戦中に遠くへ切り替える時は、星が流れるワープの一番濃い瞬間にカメラを移す
+  readyToCut(to, dt) {
+    if (this.warpWait > 0) { this.warpWait -= dt; return this.warpWait <= 0; }
+    if (!this.app.spaceWatch || this.shotWorld === undefined || this.controls.target.distanceTo(to) < WARP_DIST) return true;
+    this.app.sound.play('warp');
+    this.app.ui.warp(true);
+    this.warpWait = 0.3;
+    return false;
+  }
+  // 手前に他の球が来にくい向きを選ぶ (それでも重なる分は unblock で隠す)
+  clearestAngle(place, ends) {
+    const seg = new THREE.Line3(), hit = new THREE.Vector3();
+    const score = (a) => {
+      seg.start.copy(place(a));
+      let n = 0;
+      for (const e of ends) {
+        seg.end.copy(e.p);
+        for (const o of this.occluders) {
+          if (ends.some((f) => f.p === o.g.position)) continue;
+          if (seg.closestPointToPoint(o.g.position, true, hit).distanceTo(o.g.position) < o.r) n++;
+        }
+      }
+      return n;
+    };
+    const P = Math.PI;
+    const tries = [0.42, P - 0.42, 0.85, P - 0.85, 0.15, P - 0.15, 1.25];
+    return tries.reduce((best, a) => { const s = score(a); return s < best.s ? { a, s } : best; }, { a: tries[0], s: Infinity }).a;
+  }
+  // 見たい物 focus ([{ p, r }]) の手前に重なる球と、近くを横切る移動中のコマを隠す
+  unblock(focus, dt) {
+    const cam = this.camera;
+    cam.updateMatrixWorld();
+    const tan = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+    // カメラから見た位置。sx, sy, rad は画面の縦の半分を 1 とした大きさ
+    const look = (p, r) => {
+      const v = p.clone().applyMatrix4(cam.matrixWorldInverse), d = -v.z;
+      return { d, sx: v.x / (d * tan), sy: v.y / (d * tan), rad: r / (d * tan) };
+    };
+    const fs = focus.map((f) => look(f.p, f.r)).filter((f) => f.d > 0);
+    const near = Math.min(Infinity, ...fs.map((f) => f.d));
+    const k = Math.min(1, dt * 7);
+    let hidden = false;
+    const apply = (o, hide, set) => {
+      o.fade = (o.fade ?? 1) + ((hide ? 0 : 1) - (o.fade ?? 1)) * k;
+      if (!hide && o.fade > 0.995) o.fade = 1;
+      if (o.fade < 1) hidden = true;
+      set(o.fade, o.fade > 0.03);
+    };
+    const dist = (a, b) => Math.hypot(a.sx - b.sx, a.sy - b.sy);
+    for (const o of this.occluders) {
+      const v = look(o.g.position, o.r);
+      const mine = focus.some((f) => f.p === o.g.position);
+      const inside = cam.position.distanceTo(o.g.position) < o.r;
+      const front = v.d > 0 && v.d < near;
+      // 見たい物に手前から重なる球、またはカメラのすぐ前で画面を大きくふさぐ球
+      const hide = !mine && fs.length > 0 && (inside || (front && (v.rad > 0.5 || fs.some((f) => dist(v, f) < v.rad + f.rad + 0.04))));
+      apply(o, hide, (f, vis) => { o.g.scale.setScalar(Math.max(f, 0.001)); o.g.visible = vis; if (o.lb) o.lb.visible = vis; });
+    }
+    if (this.tokens) {
+      const c = this.app.selected && this.app.model.charById.get(this.app.selected);
+      const mine = c && (c.partyLeader || c.id);
+      for (const [id, tk] of this.tokens) {
+        const v = look(tk.g.position, 0);
+        const hide = id !== mine && fs.length > 0 && v.d > 0 && fs.some((f) => dist(v, f) < f.rad + 0.14);
+        apply(tk, hide, (f, vis) => { tk.g.scale.setScalar(Math.max(f, 0.001)); tk.g.visible = vis; tk.lb.visible = vis; tk.trail.visible = vis; });
+      }
+    }
+    return hidden;
+  }
+  // おまかせ観戦中は、パネルに隠れていない範囲の真ん中を画面の中心にして、邪魔な物をよける
+  stageCamera(dt) {
+    const on = this.app.director.on, cam = this.camera;
+    const a = on ? this.clearArea() : { cx: 0, cy: 0 };
+    const W = innerWidth, H = innerHeight, k = 1 - Math.exp(-dt * 5);
+    this.shiftX = (this.shiftX ?? 0) + (-a.cx * W / 2 - (this.shiftX ?? 0)) * k;
+    this.shiftY = (this.shiftY ?? 0) + (a.cy * H / 2 - (this.shiftY ?? 0)) * k;
+    if (on || Math.hypot(this.shiftX, this.shiftY) > 0.5) cam.setViewOffset(W, H, this.shiftX, this.shiftY, W, H);
+    else if (cam.view?.enabled) cam.clearViewOffset();
+    if (on || this.hiding) this.hiding = this.unblock(on ? this.focusList() : [], dt);
+  }
+  focusList() { return this.travelFocus ?? []; }
+  travelerFocus(c) {
+    const tk = this.tokens?.get(c.partyLeader || c.id);
+    return tk ? { p: tk.g.position, r: 0.5 } : null;
   }
 
   dispose() {
@@ -317,6 +457,7 @@ export class UniverseView extends BaseView {
       const lb = label(`<b>${escapeHtml(d.id)}</b><small>（${escapeHtml(d.yomi)}）</small><span>世界線 ${d.worlds.length} ・ キャラ ${chars}</span>`, 'dan-label');
       lb.position.set(0, radius * 1.35, 0);
       g.add(lb);
+      this.occluders.push({ g, lb, r: radius * 1.4 });
       g.userData = {
         pick: true, inner, core,
         onHover: (on) => { core.material.emissiveIntensity = on ? 0.6 : 0.25; lb.inner.classList.toggle('hot', on); },
@@ -362,8 +503,26 @@ export class UniverseView extends BaseView {
     }, 2);
     if (this.app.following || this.app.director.on) this.controls.autoRotate = false;
     if (this.followTraveler(dt)) return;
+    this.frameShot(dt);
     super.update(dt);
+    this.stageCamera(dt);
     for (const s of this.spheres) s.userData.inner.rotation.y += dt * 0.15;
+  }
+  // 世界団どうしの移動を映す時は、出発と到着の世界団を同時に入れる
+  travelAnchors() {
+    const { app } = this;
+    const c = app.director.on && app.following && app.selected && app.model.charById.get(app.selected);
+    const tr = c && app.sim.transitOf(c);
+    if (!tr || app.sim.transitStage(tr).stage !== 'space') return null;
+    const at = (wid) => { const d = this.danPos.get(app.model.worlds.get(wid).dan); return { p: d.p, r: d.r * 1.4 }; };
+    return { key: `${tr.from}>${tr.to}`, world: tr.to, A: at(tr.from), B: at(tr.to), r: this.travelerFocus(c) };
+  }
+  frameShot(dt) {
+    const an = this.travelAnchors();
+    this.framing = !!an;
+    this.travelFocus = null;
+    if (an) this.frameTravel(an, dt);
+    else this.travelKey = null;
   }
 }
 
@@ -382,9 +541,11 @@ export class ClusterView extends BaseView {
     this.scene.add(dl);
 
     this.nodes = new Map();
-    // 最高設定: 球を透かして、中に世界線の様子 (島・家・キャラ) を小さく映す
-    this.ultra = gfx() === 'ultra';
+    // 超高以上: 球を透かして、中に世界線の様子 (島・家・キャラ) を小さく映す
+    this.ultra = ultraUp(gfx());
+    this.max = gfx() === 'max';
     this.miniChars = new Map();
+    this.miniMons = new Map();
     let maxR = 10;
     const linePts = [];
     for (const wid of dan.worlds) {
@@ -402,9 +563,10 @@ export class ClusterView extends BaseView {
       const mini = this.ultra ? buildMini(w, r) : null;
       if (mini) g.add(mini);
       g.add(new THREE.Mesh(new THREE.SphereGeometry(r * 1.3, 24, 16), atmosphere(air, { shell: true, power: 3, k: 0.75 })));
+      let ring = null;
       if (w.danger > 0) {
         // 魔物の多さ = 赤い輪
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.45, 0.06 + w.danger / 80, 6, 40),
+        ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.45, 0.06 + w.danger / 80, 6, 40),
           new THREE.MeshBasicMaterial({ color: '#ff4a6a', transparent: true, opacity: 0.25 + Math.min(0.6, w.danger / 50) }));
         ring.rotation.x = Math.PI / 2.3;
         g.add(ring);
@@ -419,7 +581,8 @@ export class ClusterView extends BaseView {
       };
       this.scene.add(g);
       this.pickables.push(g);
-      this.nodes.set(wid, { g, lb, w, r, mini, detail: null, lod: 0, last: '' });
+      this.occluders.push({ g, lb, r: r * 1.35 });
+      this.nodes.set(wid, { g, lb, w, r, mini, ring, detail: null, lod: 0, last: '' });
       maxR = Math.max(maxR, Math.hypot(w.pos.x, w.pos.z) + r);
       for (const nb of w.neighbors) if (nb > wid) {
         const o = model.worlds.get(nb);
@@ -472,53 +635,95 @@ export class ClusterView extends BaseView {
         + (show ? `<b>${escapeHtml(n.w.name)}</b><small>${escapeHtml(wid)}</small>` : '')
         + `<span>👤${present.length}${visitors ? ` 🧳${visitors}` : ''}${mons ? ` 👾${mons}` : ''}</span>`;
       if (html !== n.last) { n.lb.inner.innerHTML = html; n.last = html; }
+      if (n.haze?.visible) this.tintHaze(n);
     }
   }
   update(dt) {
     const a = new THREE.Vector3(), b = new THREE.Vector3();
-    const { model } = this.app;
-    // 世界団の外へ出る/外から入る時の、世界団のふちの点 (相手の世界団のある方向)
-    const edgeToward = (danId) => {
-      const me = model.danById.get(this.danId).pos, o = model.danById.get(danId).pos;
-      return new THREE.Vector3(o.x - me.x, (o.y - me.y) * 0.3, o.z - me.z).normalize().multiplyScalar(this.maxR * 1.25);
-    };
+    const { model, spaceWatch } = this.app;
+    // 宇宙から観戦中は世界線の中に入らないので、降りる間も到着の世界線のそばに出しておく
     this.syncTravelers((tr, stage) => {
-      if (tr.kind === 'line') return this.nodes.has(tr.from) && stage !== 'down';
-      return (this.nodes.has(tr.from) && (stage === 'up' || stage === 'exit')) || (this.nodes.has(tr.to) && stage === 'enter');
+      if (tr.kind === 'line') return this.nodes.has(tr.from) && (stage !== 'down' || spaceWatch);
+      return (this.nodes.has(tr.from) && (stage === 'up' || stage === 'exit')) || (this.nodes.has(tr.to) && (stage === 'enter' || (stage === 'down' && spaceWatch)));
     }, (tr, f, stage) => {
       if (tr.kind === 'line') {
         const A = this.nodes.get(tr.from), B = this.nodes.get(tr.to);
         a.copy(A.g.position); b.copy(B.g.position);
         const dir = b.clone().sub(a).normalize();
         a.addScaledVector(dir, A.r); b.addScaledVector(dir, -B.r);
-        const k = stage === 'up' ? 0 : f;
+        const k = stage === 'up' ? 0 : stage === 'down' ? 1 : f;
         return a.clone().lerp(b, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * a.distanceTo(b) * 0.12, 0));
       }
       // 世界団の移動: 世界線から世界団のふちへ / ふちから行き先の世界線へ
-      if (stage === 'enter') {
+      if (stage === 'enter' || stage === 'down') {
         const B = this.nodes.get(tr.to);
-        a.copy(edgeToward(tr.fromDan ?? model.worlds.get(tr.from).dan)); b.copy(B.g.position);
-        return a.clone().lerp(b, f).add(new THREE.Vector3(0, Math.sin(f * Math.PI) * 20, 0));
+        const k = stage === 'down' ? 1 : f;
+        a.copy(this.edgeToward(tr.fromDan ?? model.worlds.get(tr.from).dan)); b.copy(B.g.position);
+        return a.clone().lerp(b, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * 20, 0));
       }
       const A = this.nodes.get(tr.from);
-      a.copy(A.g.position); b.copy(edgeToward(tr.toDan ?? model.worlds.get(tr.to).dan));
+      a.copy(A.g.position); b.copy(this.edgeToward(tr.toDan ?? model.worlds.get(tr.to).dan));
       const k = stage === 'up' ? 0 : f;
       return a.clone().lerp(b, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * 20, 0));
     }, 1);
     if (this.ultra) { this.updateMiniLod(); this.updateMiniChars(); }
+    if (this.max) { this.updateMiniMonsters(); this.updateMiniDust(dt); }
     if (this.followTraveler(dt)) return;
-    // 宇宙から観戦: 映したいキャラ・場所を、透けた世界線の中に追いかける
-    const p = this.spaceTarget();
-    if (p) {
-      const tgt = this.controls.target;
-      const far = tgt.distanceTo(p) > 300;
-      const d = p.sub(tgt).multiplyScalar(far ? 1 : Math.min(1, dt * 4));
-      tgt.add(d);
-      this.camera.position.add(d);
-    }
+    this.frameShot(dt);
     super.update(dt);
+    this.stageCamera(dt);
     if ((this.refreshT -= dt) < 0) { this.refresh(); this.refreshT = 0.5; }
     for (const n of this.nodes.values()) n.g.rotation.y += dt * (this.ultra ? 0.05 : 0.2);
+  }
+  // 世界団の外へ出る/外から入る時の、世界団のふちの点 (相手の世界団のある方向)
+  edgeToward(danId) {
+    const { model } = this.app;
+    const me = model.danById.get(this.danId).pos, o = model.danById.get(danId).pos;
+    return new THREE.Vector3(o.x - me.x, (o.y - me.y) * 0.3, o.z - me.z).normalize().multiplyScalar(this.maxR * 1.25);
+  }
+  // 移動中のキャラを映す時の、画面に同時に入れる2か所
+  travelAnchors() {
+    const { app } = this;
+    const c = app.director.on && app.following && app.selected && app.model.charById.get(app.selected);
+    const tr = c && app.sim.transitOf(c);
+    if (!tr) return null;
+    const { stage } = app.sim.transitStage(tr);
+    const at = (wid) => { const n = this.nodes.get(wid); return n && { p: n.g.position, r: n.r * 1.35 }; };
+    const worldOf = (wid) => app.model.worlds.get(wid).dan;
+    const edge = (dan) => ({ p: this.edgeToward(dan), r: this.maxR * 0.06 });
+    const r = this.travelerFocus(c);
+    if (tr.kind === 'line') return at(tr.from) && at(tr.to) && { key: `${tr.from}>${tr.to}`, world: tr.to, A: at(tr.from), B: at(tr.to), r };
+    if (stage === 'enter' || stage === 'down') return at(tr.to) && { key: `in:${tr.to}`, world: tr.to, A: edge(tr.fromDan ?? worldOf(tr.from)), B: at(tr.to), r };
+    return at(tr.from) && { key: `out:${tr.from}`, world: tr.to, A: at(tr.from), B: edge(tr.toDan ?? worldOf(tr.to)), r };
+  }
+  frameShot(dt) {
+    const an = this.travelAnchors();
+    this.framing = !!an;
+    this.travelFocus = null;
+    if (an) return this.frameTravel(an, dt);
+    this.travelKey = null;
+    // 宇宙から観戦: 映したいキャラ・場所を、透けた世界線の中に追いかける
+    const p = this.spaceTarget();
+    if (!p) return;
+    const tgt = this.controls.target, cam = this.camera;
+    const wid = this.spaceWorld();
+    if (wid !== this.shotWorld) {
+      if (!this.readyToCut(p, dt)) return;
+      // 別の世界線へ移る時は途中を飛ばす。遠すぎる/近すぎる所から寄っていかないよう、距離もここで決める
+      this.shotWorld = wid;
+      const off = cam.position.clone().sub(tgt).setLength(this.spaceShot().dist);
+      tgt.copy(p);
+      cam.position.copy(p).add(off);
+      return;
+    }
+    const d = p.sub(tgt).multiplyScalar(Math.min(1, dt * 4));
+    tgt.add(d);
+    cam.position.add(d);
+  }
+  focusList() {
+    if (this.travelFocus) return this.travelFocus;
+    const n = this.nodes.get(this.spaceWorld());
+    return n ? [{ p: n.g.position, r: n.r * 1.35 }] : [];
   }
   spaceTarget() {
     const { app } = this;
@@ -529,29 +734,39 @@ export class ClusterView extends BaseView {
     const n = this.watch && this.nodes.get(this.watch.world);
     return n ? n.mini.localToWorld(new THREE.Vector3(this.watch.x, 0, this.watch.z)) : null;
   }
-  // 宇宙から観戦中のカメラの距離: キャラなら球の近く、場所なら球全体が入るくらい
-  spaceShot() {
+  // 今映している世界線
+  spaceWorld() {
     const { app } = this;
     const c = app.selected && app.model.charById.get(app.selected);
-    const wid = c && !app.sim.transitOf(c) ? c.world : this.watch?.world;
+    return c && !app.sim.transitOf(c) && this.nodes.has(c.world) ? c.world : this.watch?.world;
+  }
+  // 宇宙から観戦中のカメラの距離: 場所なら球全体がパネルに隠れず入る距離、キャラならその半分まで寄る
+  spaceShot() {
+    const { app } = this;
+    const wid = this.spaceWorld();
     const n = wid && this.nodes.get(wid);
     if (!n) return null;
-    return c && wid === c.world ? { dist: n.r * 1.1, elev: 0.55, orbit: 0.08 } : { dist: n.r * 2.4, elev: 0.75, orbit: 0.06 };
+    const fit = this.fitDist(n.r * 1.1, n.r * 1.1, this.clearArea());
+    return app.selected && wid === app.model.charById.get(app.selected).world ? { dist: fit * 0.5, elev: 0.5, orbit: 0.07 } : { dist: fit, elev: 0.7, orbit: 0.05 };
   }
   // カメラからの距離で、球の中に映す物を変える (遠い: 地面だけ / 中くらい: 地面とキャラ / 近い: 建物や木も)
   updateMiniLod() {
     const cam = this.camera.position;
+    const tier = this.max ? 1 : 0;
     let built = false;
     for (const n of this.nodes.values()) {
       const d = cam.distanceTo(n.g.position) / n.r;
       // 境目で切り替わり続けないよう、下げる時は少し余裕を持たせる
       const slack = (lod) => (n.lod > lod ? 1.15 : 1);
-      const lod = d < MINI_NEAR * slack(1) ? 2 : d < MINI_MID * slack(0) ? 1 : 0;
+      const lod = d < MINI_NEAR[tier] * slack(1) ? 2 : d < MINI_MID[tier] * slack(0) ? 1 : 0;
+      if (this.max) this.showAir(n, lod > 0);
+      // 観戦で寄った時は、赤い輪が手前をふさがないようにする
+      if (n.ring) n.ring.visible = lod < 2 || !this.app.director.on;
       // 建物の組み立ては1コマに1つだけ (順番に現れるので、止まって見えない)
       if (lod === 2 && !n.detail) {
         if (built) continue;
         built = true;
-        n.detail = buildMiniDetail(n.w, this.app.model);
+        n.detail = buildMiniDetail(n.w, this.app.model, this.max);
         // クリックの判定は外側の球で足りる。細かい形まで調べると、マウスを動かすたびに重くなる
         n.detail.traverse((m) => { m.raycast = () => {}; });
         n.mini.add(n.detail);
@@ -559,6 +774,63 @@ export class ClusterView extends BaseView {
       if (n.detail) n.detail.visible = lod === 2;
       n.lod = lod;
     }
+  }
+  // 中くらいの距離まで: 世界線の空の色の霧と塵 (最高設定)
+  showAir(n, on) {
+    if (on && !n.haze) {
+      if (!this.hazeGeo) this.owned.push(this.hazeGeo = new THREE.SphereGeometry(1, 32, 20));
+      n.haze = new THREE.Mesh(this.hazeGeo, hazeMaterial(n.w.theme.sky));
+      n.haze.scale.setScalar(n.r * 1.002);
+      n.haze.raycast = () => {};
+      n.g.add(n.haze);
+      this.owned.push(n.haze.material);
+      n.dust = miniDust(n.w, n.mini.scale.x);
+      if (n.dust) { n.mini.add(n.dust); this.owned.push(n.dust.geometry, n.dust.material); }
+      this.tintHaze(n);
+    }
+    if (n.haze) n.haze.visible = on;
+    if (n.dust) n.dust.visible = on;
+  }
+  // 霧の色は世界線の中の空と同じように昼夜で変わる
+  tintHaze(n) {
+    const night = new THREE.Color(n.w.theme.sky).lerp(new THREE.Color('#050818'), 0.95);
+    n.haze.material.uniforms.col.value.copy(night).lerp(new THREE.Color(n.w.theme.sky), daylight(this.app.sim.hour));
+  }
+  updateMiniDust(dt) {
+    const t = performance.now() / 1000;
+    for (const n of this.nodes.values()) {
+      if (!n.lod || !n.dust) continue;
+      const { spec } = n.dust.userData, H = n.w.geo.R * 0.45;
+      const arr = n.dust.geometry.attributes.position.array;
+      for (let i = 0; i < arr.length; i += 3) {
+        arr[i] += Math.sin(t + i) * spec.sway * dt;
+        arr[i + 1] = (arr[i + 1] + spec.vy * dt + H) % H;
+      }
+      n.dust.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+  // 近くの世界線の魔物: 戦っている魔物と、残りの一部を映す (最高設定)
+  updateMiniMonsters() {
+    const { sim } = this.app;
+    const seen = new Set();
+    for (const n of this.nodes.values()) {
+      if (n.lod !== 2) continue;
+      let rest = MINI_MONSTERS;
+      for (const m of sim.monsters.get(n.w.id) || []) {
+        if (m.dead || (!m.engagedBy && rest-- <= 0)) continue;
+        seen.add(m.id);
+        let o = this.miniMons.get(m.id);
+        if (!o) {
+          o = buildMonster(m.boss, TYPE_COLOR[m.type?.[0]]);
+          o.traverse((x) => { x.raycast = () => {}; });
+          o.scale.multiplyScalar(2.2); // キャラのコマに負けない大きさに
+          this.miniMons.set(m.id, o);
+        }
+        if (o.parent !== n.mini) n.mini.add(o);
+        o.position.set(m.x, 0, m.z);
+      }
+    }
+    for (const [id, o] of this.miniMons) if (!seen.has(id)) { o.parent?.remove(o); this.miniMons.delete(id); }
   }
   // 世界線の中にいるキャラを、小さな島の上に映す
   updateMiniChars() {
@@ -580,15 +852,18 @@ export class ClusterView extends BaseView {
       sp.scale.set(H * (sp.userData.tex.ready && c.img ? sp.userData.tex.aspect : 1), H, 1);
       sp.position.set(c.x, H / 2, c.z);
       sp.material.rotation = c.state === 'sleep' || c.state === 'camp' || c.state === 'down' ? Math.PI / 2 : 0;
+      if (this.max) sp.material.color.set(sleepTint(c));
     }
     for (const [id, sp] of this.miniChars) if (!seen.has(id)) { sp.parent?.remove(sp); sp.material.dispose(); this.miniChars.delete(id); }
   }
 }
 
-// 球の半径の何倍まで近づいたら建物 / キャラを映すか (最高設定)
-const MINI_NEAR = 7, MINI_MID = 26;
+// 球の半径の何倍まで近づいたら建物 / キャラを映すか ([超高, 最高])
+const MINI_NEAR = [7, 14], MINI_MID = [26, 34];
+// 最高設定で1つの世界線に映す、戦っていない魔物の数
+const MINI_MONSTERS = 6;
 
-// 世界団マップの球の中に置く、世界線の縮小模型の地面 (最高設定)
+// 世界団マップの球の中に置く、世界線の縮小模型の地面 (超高以上)
 function buildMini(w, r) {
   const { geo, theme: th } = w;
   const g = new THREE.Group();
@@ -607,7 +882,7 @@ function buildMini(w, r) {
 }
 
 // 模型の建物や木。近づいた世界線の分だけ組み立てる
-function buildMiniDetail(w, model) {
+function buildMiniDetail(w, model, max) {
   const { geo, theme: th } = w;
   const g = new THREE.Group();
   const lm = buildProp(th.landmark, null, 0.7);
@@ -629,14 +904,51 @@ function buildMiniDetail(w, model) {
     g.add(b);
   }
   // 自然物などは多いので一部だけ
-  for (const p of geo.props.slice(0, 30)) {
+  for (const p of geo.props.slice(0, max ? 110 : 30)) {
     const o = buildProp(p.kind, p.color, p.seed);
     o.position.set(p.x, 0, p.z);
     o.rotation.y = p.rot;
     o.scale.multiplyScalar(p.s);
     g.add(o);
   }
-  return batchStatic(g);
+  batchStatic(g);
+  if (max) g.add(miniGrass(geo, new THREE.Color(th.ground)));
+  return g;
+}
+
+// 模型の草むら (最高設定)
+function miniGrass(geo, ground) {
+  const n = Math.round(Math.min(320, geo.R * 6));
+  const im = new THREE.InstancedMesh(new THREE.ConeGeometry(0.35, 1.7, 4), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), n);
+  const d = new THREE.Object3D(), col = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, rr = geo.plazaR + 1 + Math.sqrt(Math.random()) * (geo.R * 0.96 - geo.plazaR - 1);
+    d.position.set(Math.cos(a) * rr, 0.5, Math.sin(a) * rr);
+    d.rotation.set((Math.random() - 0.5) * 0.5, Math.random() * 6, (Math.random() - 0.5) * 0.5);
+    d.scale.setScalar(0.6 + Math.random() * 0.9);
+    d.updateMatrix();
+    im.setMatrixAt(i, d.matrix);
+    im.setColorAt(i, col.copy(ground).offsetHSL((Math.random() - 0.5) * 0.05, 0.05, 0.03 + Math.random() * 0.1));
+  }
+  return im;
+}
+
+// 模型の中を舞う塵 (最高設定)。世界線の中と同じ種類の粒を、数を減らして島の大きさに合わせて出す
+function miniDust(w, scale) {
+  const pt = PARTICLES[w.theme.particle];
+  if (!pt) return null;
+  const { R } = w.geo;
+  const n = Math.round(Math.min(160, R * 1.6)), pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * R * 0.92;
+    pos.set([Math.cos(a) * rr, Math.random() * R * 0.45, Math.sin(a) * rr], i * 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ color: pt.color, size: pt.size * scale * 3, map: DOT, transparent: true, depthWrite: false, opacity: 0.85 }));
+  p.userData.spec = pt;
+  p.raycast = () => {};
+  return p;
 }
 
 // ---------- キャラクターの見た目 ----------
@@ -727,10 +1039,10 @@ export class WorldView extends BaseView {
     const q = this.quality;
     this.groundCol = new THREE.Color(th.ground);
     // 影
-    if (q === 'high' || q === 'ultra') {
+    if (q === 'high' || ultraUp(q)) {
       const s = this.sun.shadow;
       this.sun.castShadow = true;
-      s.mapSize.setScalar(q === 'ultra' ? 4096 : 2048);
+      s.mapSize.setScalar(ultraUp(q) ? 4096 : 2048);
       const span = R * 1.15;
       Object.assign(s.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: R * 5 });
       s.camera.updateProjectionMatrix();
@@ -801,9 +1113,9 @@ export class WorldView extends BaseView {
         this.rocks.push({ m, y: m.position.y, p: Math.random() * 6, s });
       }
     }
-    // 草むら (高・最高)
-    if (q === 'high' || q === 'ultra') {
-      const n = Math.round(R * (q === 'ultra' ? 22 : 12));
+    // 草むら (高以上)
+    if (q === 'high' || ultraUp(q)) {
+      const n = Math.round(R * (ultraUp(q) ? 22 : 12));
       const im = new THREE.InstancedMesh(new THREE.ConeGeometry(0.2, 1, 4), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), n);
       const d = new THREE.Object3D(), col = new THREE.Color();
       for (let i = 0; i < n; i++) {
@@ -1040,7 +1352,7 @@ export class WorldView extends BaseView {
 
     // 昼夜
     const h = sim.hour;
-    const day = h < 5 || h > 20 ? 0 : h < 7 ? (h - 5) / 2 : h > 18 ? (20 - h) / 2 : 1;
+    const day = daylight(h);
     const dusk = Math.max(0, 1 - Math.abs(h - 18.3) / 1.4) * 0.5 + Math.max(0, 1 - Math.abs(h - 5.8) / 1) * 0.3;
     const sky = this.skyNight.clone().lerp(this.skyDay, day).lerp(new THREE.Color('#ff8a5a'), dusk * 0.5);
     this.scene.background.copy(sky);
@@ -1127,7 +1439,7 @@ export class WorldView extends BaseView {
       u.sp.scale.set(c.img ? W : H * 0.92, c.img ? H : H * 0.92, 1);
       const bob = c.walking || u.fidMoving ? Math.abs(Math.sin(t * 9 + u.phase)) * 0.35 : Math.sin(t * 2 + u.phase) * 0.04 + 0.04;
       u.sp.position.y = (lying ? Math.min(W, H) * 0.5 * 0.9 : (c.img ? H : H * 0.92) / 2) + bob;
-      u.sp.material.color.set(down ? '#8a8a8a' : c.state === 'sleep' || c.state === 'camp' ? '#9aa6d0' : '#ffffff');
+      u.sp.material.color.set(sleepTint(c));
       u.sp.material.opacity = down ? 0.75 : 1;
       if (c.act.kind === 'fight') u.sp.position.x = Math.sin(t * 30) * 0.12;
       else u.sp.position.x = 0;

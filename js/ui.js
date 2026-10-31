@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=35';
-import { prioOf } from './director.js?v=35';
-import { fmtTime, escapeHtml, colorOf, luminance } from './util.js?v=35';
-import { typeSummary, TYPE_COLOR } from './types.js?v=35';
+import { CATS } from './sim.js?v=36';
+import { prioOf } from './director.js?v=36';
+import { fmtTime, escapeHtml, colorOf, luminance, ultraUp } from './util.js?v=36';
+import { typeSummary, TYPE_COLOR } from './types.js?v=36';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -29,6 +29,13 @@ export class UI {
     $('#set-ui').value = Math.round(app.settings.ui * 100);
     uiV();
     $('#set-ui').addEventListener('input', (e) => { app.setSetting('ui', e.target.value / 100); uiV(); });
+    this.renderOshi();
+    $('#set-oshi').addEventListener('click', (e) => {
+      const off = e.target.closest('[data-oshi-off]');
+      if (off) return app.toggleOshi(off.dataset.oshiOff);
+      const c = e.target.closest('[data-oshi]');
+      if (c) app.selectChar(c.dataset.oshi, { focus: true });
+    });
     $('#tg-director').addEventListener('click', () => app.director.toggle());
     $('#tg-space').addEventListener('click', () => app.toggleSpaceWatch());
     this.syncSpaceBtn();
@@ -61,6 +68,7 @@ export class UI {
       e.preventDefault();
       if (el.dataset.act === 'close') return app.selectChar(null);
       if (el.dataset.act === 'follow') return app.toggleFollow();
+      if (el.dataset.act === 'oshi') return app.toggleOshi(app.selected);
       if (el.dataset.c) return app.selectChar(el.dataset.c, { focus: true });
       if (el.dataset.w) return app.openWorld(el.dataset.w);
       if (el.dataset.dan) return app.openDan(el.dataset.dan);
@@ -402,11 +410,11 @@ export class UI {
       + ms.map((m) => `<div class="raidbox fest" data-w="${escapeHtml(m.world)}">${this.wchip(m.world)}<b>${m.kind === 'drill' ? '🎖️' : '📯'} 「${escapeHtml(m.faction)}」の${m.kind === 'drill' ? '合同訓練' : m.kind === 'market' ? '商談会' : '集会'}</b><small>${m.members.length}人参加</small></div>`).join('');
   }
 
-  // 「宇宙から観戦」ボタンはグラフィック最高の時だけ出す
+  // 「宇宙から観戦」ボタンはグラフィック超高以上の時だけ出す
   syncSpaceBtn() {
     const { settings } = this.app;
-    $('#tg-space').hidden = settings.gfx !== 'ultra';
-    $('#tg-space').classList.toggle('on', !!settings.spaceWatch && settings.gfx === 'ultra');
+    $('#tg-space').hidden = !ultraUp(settings.gfx);
+    $('#tg-space').classList.toggle('on', !!settings.spaceWatch && ultraUp(settings.gfx));
   }
 
   // 今日と、これから1週間の誕生日
@@ -514,8 +522,17 @@ export class UI {
     }).join('')}</div>`;
   }
 
+  // 設定の中の推しキャラ一覧
+  renderOshi() {
+    const { model, settings } = this.app;
+    const chips = settings.oshi.map((id) => model.charById.get(id)).filter(Boolean)
+      .map((c) => `<span class="oshi-chip"><a data-oshi="${escapeHtml(c.id)}">${escapeHtml(c.name)}</a><button data-oshi-off="${escapeHtml(c.id)}" title="推しから外す">×</button></span>`).join('');
+    $('#set-oshi').innerHTML = `<b>⭐ 推しキャラ</b><small>おまかせ観戦で優先して映します。全体の見どころも流れます</small>`
+      + (chips ? `<div class="oshi-list">${chips}</div>` : `<small>キャラの情報パネルの「⭐ 推しにする」で追加できます（何人でも）</small>`);
+  }
+
   charInfo(c) {
-    const { model, sim, following } = this.app;
+    const { model, sim, following, settings } = this.app;
     const d = sim.displayAct(c);
     const home = model.worlds.get(c.home);
     const c1 = colorOf(c.colors[0], '#dddddd'), c2 = colorOf(c.colors[1], '#ffffff');
@@ -538,6 +555,7 @@ export class UI {
       + `<div class="avatar">${avatar}</div>`
       + `<h2>${sim.isBirthday(c) ? '🎂 ' : ''}${escapeHtml(c.name)}</h2><div class="sub">${escapeHtml(c.yomi)} ・ No.${escapeHtml(c.id)}</div>`
       + `<div class="btns"><button class="btn ${following ? 'on' : ''}" data-act="follow">🎥 ${following ? '追跡中' : '追跡する'} (T)</button>`
+      + `<button class="btn ${settings.oshi.includes(c.id) ? 'on' : ''}" data-act="oshi">⭐ ${settings.oshi.includes(c.id) ? '推し' : '推しにする'}</button>`
       + (this.app.view.worldId !== c.world || sim.transitOf(c) ? `<button class="btn" data-c="${escapeHtml(c.id)}">📍 いる場所へ</button>` : '') + `</div>`
       + `<h3>いま</h3><div class="row" style="cursor:default"><i class="ico" style="background:${CATS[d.cat]?.color}">${d.icon}</i>${escapeHtml(d.text)}</div>`
       + `<div class="kv"><span>現在地</span><span>${this.whereChip(c, true)}${sim.transitOf(c) ? '（移動中）' : c.world !== c.home ? '（旅行中）' : '（家）'}</span>`

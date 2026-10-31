@@ -241,6 +241,13 @@ body.nopanels #events, body.nopanels #info { display: none; }
 #settings[hidden] { display: none; }
 #settings label { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
 #settings select { font-family: inherit; background: #1a1f3a; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; }
+#set-oshi { display: flex; flex-direction: column; gap: 4px; max-width: 300px; }
+#set-oshi small { color: var(--muted); line-height: 1.4; }
+.oshi-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; max-height: 150px; overflow-y: auto; }
+.oshi-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 10px; border-radius: 999px; background: rgba(255, 225, 74, .15); border: 1px solid rgba(255, 225, 74, .4); }
+.oshi-chip a { cursor: pointer; }
+.oshi-chip button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 14px; }
+.oshi-chip button:hover { color: var(--text); }
 .route-label { color: #c8d0ff; font-size: 12px; background: rgba(10, 14, 40, .7); border: 1px dashed rgba(160, 180, 255, .4); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
 
 /* 演出 */

@@ -1,5 +1,5 @@
 // BGM・環境音・効果音。音声ファイルは使わず Web Audio API でその場で作曲・合成する
-import { hashStr, seeded } from './util.js?v=35';
+import { hashStr, seeded } from './util.js?v=36';
 
 const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 const MINOR = [0, 2, 3, 5, 7, 8, 10];
@@ -220,13 +220,20 @@ export class Sound {
   }
 
   // ---------- BGM ----------
-  setMood(key, night = false, seedKey = key) {
+  // smooth: 宇宙から観戦中の切り替え。同じ曲調なら止めずにメロディだけ替え、違う曲調ならゆっくり入れ替える
+  setMood(key, night = false, seedKey = key, smooth = false) {
     if (!this.ctx) { this.pendingMood = [key, night, seedKey]; return; }
     if (key === this.mood && night === this.night && seedKey === this.seedKey) return;
+    if (smooth && key === this.mood && night === this.night && this.cfg) {
+      this.seedKey = seedKey;
+      this.rng = seeded(hashStr('bgm:' + seedKey));
+      this.motifs = new Map();
+      return;
+    }
     const t = this.ctx.currentTime;
     const first = !this.mood;
     this.bgmFade.gain.cancelScheduledValues(t);
-    this.bgmFade.gain.setTargetAtTime(0, t, 0.15);
+    this.bgmFade.gain.setTargetAtTime(0, t, smooth ? 0.5 : 0.15);
     const apply = () => {
       this.mood = key;
       this.night = night;
@@ -246,11 +253,11 @@ export class Sound {
       this.dL.delayTime.value = beat * 0.75;
       this.dR.delayTime.value = beat * 0.75;
       this.delaySend.gain.value = m.delay * 0.7;
-      this.bgmFade.gain.setTargetAtTime(10 ** ((TRIM[key] || 0) / 20), now, 0.4);
+      this.bgmFade.gain.setTargetAtTime(10 ** ((TRIM[key] || 0) / 20), now, smooth ? 0.9 : 0.4);
       if (m.amb !== null) this.setAmbience(m.amb, night);
     };
     if (first) apply();
-    else { clearTimeout(this.moodTimer); this.mood = key; this.night = night; this.seedKey = seedKey; this.moodTimer = setTimeout(apply, 550); }
+    else { clearTimeout(this.moodTimer); this.mood = key; this.night = night; this.seedKey = seedKey; this.moodTimer = setTimeout(apply, smooth ? 1500 : 550); }
   }
   get trackName() {
     const m = MOODS[this.mood];

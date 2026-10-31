@@ -1,7 +1,7 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=35';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost } from './model.js?v=35';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=35';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=36';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost } from './model.js?v=36';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=36';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -24,6 +24,7 @@ const HOBBIES = ['読書', 'ゲーム', '釣り', 'お絵かき', '散歩', '歌
 const OUTDOOR = /釣り|散歩|散策|虫取り|日向|写真|スケッチ|森林|バード|凧|狩り|探し|採集|観測|月見|水泳|スケート|雪|日光|夕涼み|水浴び|素振り|球技|肝試し|紙飛行機|ドローン|焚き火|温泉|化石|宇宙遊泳/;
 const JOBS = ['畑仕事', 'お店番', '見回り', '研究', '掃除', '配達', '料理の仕込み', '工房で製作', '書類整理', '子守り', '修理屋', '図書館の整理', 'パン屋', '郵便配達'];
 const SABORI = ['ゴロゴロする', 'スマホをいじる', '二度寝', 'ぼーっとする', 'お菓子をつまむ', '布団にくるまる', 'テレビを眺める'];
+const NIGHT_ACTS = ['こっそり夜食を食べる', '布団の中で本を読む', 'ゲームで夜ふかし', '窓から星を眺める', '深夜テレビを見る', '動画を見続ける', '明日の準備をする', 'ひとりで考えごと'];
 const WALK = ['散策', '見回り', 'ぶらぶら', '近所を一周', '寄り道'];
 const GREET = ['やあ！', 'こんにちは〜', '元気？', 'いい天気だね', '最近どう？', '聞いてよ〜', 'おっ、久しぶり！', 'ねえねえ'];
 const REPLY = ['元気だよ！', 'ふふっ', 'それな！', 'へぇ〜！', 'まあまあかな', 'いいね！', 'ほんとに？', 'あはは'];
@@ -149,6 +150,13 @@ export class Sim {
     return (this.hour < 6 ? this.day : this.day + 1) * MIN_PER_DAY + 360;
   }
   nightKey() { return this.hour < 12 ? this.day - 1 : this.day; }
+  // 寝る時刻 (24を超えると翌日の深夜)。多くは22〜24時半で夜ごとに変わり、夜型の2割は1〜2時半まで起きている
+  bedtime(c) {
+    const r = (hashStr(`bed:${c.id}:${this.nightKey()}`) % 1000) / 1000;
+    return this.isOwl(c) ? 25 + r * 1.5 : 22 + r * 2.5;
+  }
+  isOwl(c) { return hashStr('owl:' + c.id) % 5 === 0; }
+  stillUp(c) { const h = this.hour; return (h < 12 ? h + 24 : h) < this.bedtime(c); }
   dateLabel(day = this.day) { const { m, d } = dateOfDay(day); return `${m}月${d}日`; }
   // うるう年でない年の2月29日生まれは、2月28日にお祝いする
   bdKeysOn(day) {
@@ -453,7 +461,11 @@ export class Sim {
     const w = this.m.worlds.get(c.world);
     const geo = w.geo;
     const home = geo.homes[c.id];
-    if (this.isNight) return this.setAct(c, 'daily', '寝る', this.nextMorning() + rand(0, 75) - this.t, home, 'sleep', null, '家に帰っている');
+    if (this.isNight) {
+      if (this.stillUp(c)) return this.doNightOwl(c, home);
+      // 夜型は朝もゆっくり
+      return this.setAct(c, 'daily', '寝る', this.nextMorning() + rand(0, 75) + (this.isOwl(c) ? rand(60, 120) : 0) - this.t, home, 'sleep', null, '家に帰っている');
+    }
     const meal = this.dueMeal(c);
     if (meal) return this.doMeal(c, meal, home);
 
@@ -498,6 +510,13 @@ export class Sim {
       case 'help': return this.doHelp(c, geo);
       case 'repair': return this.setAct(c, 'help', pick(['荒らされた町の片付け', '壊れた柵の修理', 'がれき拾い']), rand(40, 90), randomTown(geo));
     }
+  }
+
+  // 寝るまでの夜ふかし: 家でのんびりするか、起きている人とおしゃべりする
+  doNightOwl(c, home) {
+    const near = this.findChatPartner(c);
+    if (near && chance(0.35)) return this.startChat(c, near);
+    return this.setAct(c, 'sabori', pick(NIGHT_ACTS), rand(30, 120), chance(0.7) ? home : null);
   }
 
   // ---------- 臨時イベント: 魔物の大群 (防衛戦) ----------

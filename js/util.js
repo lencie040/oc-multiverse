@@ -85,3 +85,6 @@ export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// グラフィック「超高」と「最高」の共通の機能 (宇宙から世界線の中が見える等) を使える設定か
+export const ultraUp = (q) => q === 'ultra' || q === 'max';
