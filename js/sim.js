@@ -1,10 +1,10 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=43';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=43';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=43';
-import { loadBattleData } from './battle.js?v=43';
-import { RPG } from './rpg.js?v=43';
-import { Control } from './control.js?v=43';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=44';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=44';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=44';
+import { loadBattleData } from './battle.js?v=44';
+import { RPG } from './rpg.js?v=44';
+import { Control } from './control.js?v=44';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -1262,11 +1262,11 @@ export class Sim {
   // 世界団の移動は世界線の果てからだけ
   atEdge(c) { return c.world === this.danOf(c).edge; }
   edgeOf(danId) { return this.m.danById.get(danId).edge; }
-  canDan(c, toDan) { return this.atEdge(c) && this.danOf(c).neighbors.includes(toDan) && c.pts >= this.danPrice(c, toDan) && this.safeHop(c, this.edgeOf(toDan)); }
+  canDan(c, toDan) { return this.atEdge(c) && this.danOf(c).neighbors.includes(toDan) && c.pts >= this.danPrice(c, toDan) && this.safeDan(c, toDan); }
   // 果てまでの道のりも含めて、行ける世界団
   affordableDans(c) {
     const edge = this.danOf(c).edge, walk = c.world === edge ? 0 : this.routeCost(c, c.world, edge);
-    return this.danOf(c).neighbors.filter((d) => c.pts >= walk + this.danPrice(c, d) && this.travelOdds(c, this.edgeOf(d)) >= 0.5);
+    return this.danOf(c).neighbors.filter((d) => c.pts >= walk + this.danPrice(c, d) && this.safeDan(c, d));
   }
   // 世界団どうしのつながりをたどって、目的の世界団へ向かう次の世界団
   nextDan(from, to) {
@@ -1502,6 +1502,7 @@ export class Sim {
     this.emote(c, '👋');
     this.effects.push({ t: this.t, world: to, x: p.x, z: p.z, kind: kind === 'dan' ? 'dan' : 'portal' });
     if (kind === 'dan') {
+      c.halvedDay = this.day; // 世界団を越えた反動は、着いてから出る
       this.say(c, c.trip?.goingHome ? 'ただいま…ちょっと疲れた' : 'ふぅ…力を使いすぎた');
       this.log(`🌌 ${c.name}が世界団 ${tw.dan} の「${tw.name}」に到着した（今日は力が半減）`, to, [c.id], true);
       c.act = { cat: 'move', label: '世界団移動の反動で休憩', until: this.t + rand(5, 10), kind: 'idle' };
@@ -1540,7 +1541,6 @@ export class Sim {
     const to = this.edgeOf(toDan);
     const cost = this.danPrice(c, toDan);
     c.pts = Math.max(0, c.pts - cost);
-    c.halvedDay = this.day;
     if (tr) {
       tr.danJumped = true;
       if (!homeward) tr.mode = 'far';
@@ -1549,7 +1549,7 @@ export class Sim {
     }
     const tw = this.m.worlds.get(to);
     this.effects.push({ t: this.t, world: from, x: c.x, z: c.z, kind: 'dan' });
-    this.log(`🌌 ${this.partyNames(c)}が世界団を越える旅に出た 「${this.wname(from)}」(${fromDan})→「${tw.name}」(${toDan})　${cost}pt消費・今日は力が半減`, from, [c.id, ...c.party], true, { kind: 'dan-travel', from, to });
+    this.log(`🌌 ${this.partyNames(c)}が世界団を越える旅に出た 「${this.wname(from)}」(${fromDan})→「${tw.name}」(${toDan})　${cost}pt消費`, from, [c.id, ...c.party], true, { kind: 'dan-travel', from, to });
     this.daily?.danJumps.push({ name: c.name, from, to });
     const land = tw.geo.edge ?? randomTown(tw.geo);
     // 世界団の中の宇宙へ出る → 世界団の外の宇宙を飛ぶ → 行き先の世界団に入る の3段階

@@ -1,6 +1,6 @@
 // バトルのしくみ。オリキャラ図鑑の対戦エンジンを移植し、レベルと複数人の戦いに対応させたもの
 // 特性と技の文章を読み取って効果を決める。戦闘は startBattle で始め、battleTurn でターンを回す
-import { typeMult, splitTypes } from './types.js?v=43';
+import { typeMult, splitTypes } from './types.js?v=44';
 
 const rnd = Math.random, clamp = (v, a, b) => Math.max(a, Math.min(b, v)), pick = (a) => a[Math.floor(rnd() * a.length)];
 const mult = (t, x) => typeMult(t, x);

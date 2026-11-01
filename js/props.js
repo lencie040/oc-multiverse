@@ -1,7 +1,7 @@
 // ローポリの構造物・自然物
 import * as THREE from 'three';
-import { portalMaterial } from './fx.js?v=43';
-import { FONT } from './util.js?v=43';
+import { portalMaterial } from './fx.js?v=44';
+import { FONT } from './util.js?v=44';
 
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),

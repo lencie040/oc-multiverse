@@ -1,15 +1,15 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=43';
-import { Sim } from './sim.js?v=43';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=43';
-import { UI } from './ui.js?v=43';
-import { Director } from './director.js?v=43';
-import { Play } from './play.js?v=43';
-import { Sound, moodOf, danMoodOf } from './audio.js?v=43';
-import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=43';
-import { Sync } from './sync.js?v=43';
-import { PostFX } from './fx.js?v=43';
+import { buildModel } from './model.js?v=44';
+import { Sim } from './sim.js?v=44';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=44';
+import { UI } from './ui.js?v=44';
+import { Director } from './director.js?v=44';
+import { Play } from './play.js?v=44';
+import { Sound, moodOf, danMoodOf } from './audio.js?v=44';
+import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=44';
+import { Sync } from './sync.js?v=44';
+import { PostFX } from './fx.js?v=44';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -31,7 +31,7 @@ class App {
     // キャラの漢字のコマは文字を絵にするので、先に読み込んでおく (珍しい漢字は同梱のフォント)
     const rare = fetch('fonts/chars.json').then((r) => r.json()).then((t) => document.fonts.load('40px "OC Jigmo"', t));
     await Promise.race([Promise.all([document.fonts.load('800 40px "M PLUS Rounded 1c"'), rare]), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=43').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=44').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む

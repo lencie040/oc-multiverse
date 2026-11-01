@@ -1,7 +1,7 @@
 // キャラ操作の画面: 操作パネルと手動の戦闘
-import { escapeHtml } from './util.js?v=43';
-import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=43';
-import { ownerHash } from './control.js?v=43';
+import { escapeHtml } from './util.js?v=44';
+import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=44';
+import { ownerHash } from './control.js?v=44';
 
 const $ = (s) => document.querySelector(s);
 const TOKEN_KEY = 'oc-multiverse-player';
@@ -130,7 +130,7 @@ export class Play {
       return row(escapeHtml(sim.wname(id)), `${cost}pt ・ 魔物Lv${sim.routeLevel(c.world, id)} ・ 勝率の目安 ${odds}%`, 'hop', { to: id }, '行く');
     }).join('');
     html += '<div class="pl-sec">世界団の移動</div>';
-    if (sim.atEdge(c)) html += dan.neighbors.map((d) => row(`世界団 ${escapeHtml(d)}`, `${sim.danPrice(c, d)}pt ・ 世界線の果てから出発`, 'dan', { to: d }, '越える')).join('');
+    if (sim.atEdge(c)) html += dan.neighbors.map((d) => row(`世界団 ${escapeHtml(d)}`, `${sim.danPrice(c, d)}pt ・ 魔物Lv${sim.routeLevel(c.world, sim.edgeOf(d))}が2回 ・ 勝率の目安 ${Math.round(sim.danOdds(c, d) * 100)}%`, 'dan', { to: d }, '越える')).join('');
     else html += `<p class="pl-note">世界団を移動できるのは世界線の果て（${escapeHtml(sim.wname(dan.edge))}）からです。</p>`;
     const sos = sim.spaceDowned().filter((o) => o !== c && o.transit.downed.sos && sim.sosWorlds(o.transit).has(c.world));
     if (sos.length) html += '<div class="pl-sec">救難信号</div>' + sos.map((o) => row(`🆘 ${escapeHtml(o.name)}`, `「${escapeHtml(sim.wname(o.transit.from))}」の周辺で倒れている`, 'rescue', { id: o.id }, '助けに行く')).join('');

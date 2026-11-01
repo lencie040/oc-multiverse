@@ -1,9 +1,9 @@
 // レベル・戦闘・宇宙の魔物・救難信号・お金と持ち物 (Sim に足すメソッド)
-import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=43';
-import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=43';
-import { splitTypes } from './types.js?v=43';
-import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=43';
-import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=43';
+import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=44';
+import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=44';
+import { splitTypes } from './types.js?v=44';
+import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=44';
+import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=44';
 
 const TURN_SEC = 0.9; // 自動の戦闘の1ターンの長さ (秒)
 const FIGHT_MIN = 2 / 60, FIGHT_MAX = 8 / 60; // 自動の戦闘の長さ (分)
@@ -261,6 +261,9 @@ export const RPG = {
     return win / 6;
   },
   safeHop(c, to) { return !!c.ctrl || this.travelOdds(c, to) >= SAFE_ODDS; },
+  // 世界団の移動では魔物に2回遭う
+  danOdds(c, toDan) { return this.travelOdds(c, this.edgeOf(toDan)) ** 2; },
+  safeDan(c, toDan) { return !!c.ctrl || this.danOdds(c, toDan) >= SAFE_ODDS; },
   // 飛んでいる途中で魔物に遭う時刻
   planEncounters(kind, start, end, t1, t2) {
     if (kind === 'dan') return [t1 ?? start + (end - start) * 0.25, t2 ?? end - (end - start) * 0.25];

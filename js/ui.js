@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=43';
-import { prioOf } from './director.js?v=43';
-import { fmtTime, escapeHtml, colorOf, luminance, ultraUp, isPhone } from './util.js?v=43';
-import { typeSummary, TYPE_COLOR } from './types.js?v=43';
+import { CATS } from './sim.js?v=44';
+import { prioOf } from './director.js?v=44';
+import { fmtTime, escapeHtml, colorOf, luminance, ultraUp, isPhone } from './util.js?v=44';
+import { typeSummary, TYPE_COLOR } from './types.js?v=44';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -626,7 +626,7 @@ export class UI {
       + `<span>所属世界線</span><span>${this.wchip(c.home, true)} ${escapeHtml(c.hani)}</span><span>世界団</span><span>${escapeHtml(home.dan)}</span>`
       + `<span>ランク</span><span>${c.rank}</span><span>レベル</span><span>${c.lv}（次まで ${sim.expNeed(c.lv) - c.exp}）</span>`
       + `<span>コイン</span><span>${c.coins}</span><span>食料</span><span>${c.food}${c.hungry ? `（空腹${c.hungry}日目）` : ''}</span>`
-      + `<span>戦闘力</span><span>${pw}${c.halvedDay === sim.day ? '（世界団移動で半減中）' : ''}${c.trainDay === sim.day ? '（修行で1割増し）' : ''}</span>`
+      + `<span>戦闘力</span><span>${pw}${c.halvedDay === sim.day ? '（今日は半減中）' : ''}${c.trainDay === sim.day ? '（修行で1割増し）' : ''}</span>`
       + `<span>移動pt</span><span>${moves}</span><span>世界団移動</span><span>${danNext}</span>`
       + (party.length ? `<span>${c.partyLeader ? 'リーダー' : '仲間'}</span><span>${party.map((p) => escapeHtml(p.name)).join('、')}</span>` : '')
       + (c.type ? `<span>タイプ</span><span>${c.types.map(tchip).join('')}</span>` : '')
