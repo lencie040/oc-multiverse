@@ -1,14 +1,14 @@
 // キャラ操作: 見ている人からの命令を受けて、そのキャラを動かす (Sim に足すメソッド)
 // 命令はホストだけが実行する。結果は普段の同期で全員に届く
-import { rand, randInt, pick, dist2, hashStr } from './util.js?v=47';
-import { randomTown, powerAt } from './model.js?v=47';
-import { monsterType } from './types.js?v=47';
-import { makeUnit, autoBattle } from './battle.js?v=47';
-import { ITEMS } from './items.js?v=47';
-import { CTRL_EXPIRE, DOWN_MIN } from './rpg.js?v=47';
+import { rand, randInt, pick, dist2, hashStr } from './util.js?v=48';
+import { randomTown, powerAt } from './model.js?v=48';
+import { monsterType } from './types.js?v=48';
+import { makeUnit, autoBattle } from './battle.js?v=48';
+import { ITEMS } from './items.js?v=48';
+import { CTRL_EXPIRE, DOWN_MIN } from './rpg.js?v=48';
 
 // 操作して何かをやり遂げた時のコイン (難しいことほど多い)
-const ACT_COINS = { work: 30, training: 20, explore: 25, help: 20, social: 8, hobby: 6, sabori: 2, daily: 3 };
+const ACT_COINS = { training: 20, explore: 25, help: 20, social: 8, hobby: 6, sabori: 2, daily: 3 };
 const OWN = ['ゴロゴロする', 'スマホをいじる', 'ぼーっとする', 'お菓子をつまむ', 'テレビを眺める'];
 
 export const ownerHash = (token) => 'p' + hashStr('player:' + token).toString(36);
@@ -50,8 +50,19 @@ export const Control = {
     c.halvedDay = this.day;
     this.log(`🥱 ${c.name}は寝ずに朝を迎えた（今日は戦闘力が半減）`, c.transit ? c.home : c.world, [c.id], false);
   },
+  // 仕事は働いている間ずっとコインが増える (レベルが高いほど時給が高い)
+  workPay(c, dt) {
+    const a = c.act;
+    a.pay = (a.pay || 0) + (10 + c.lv * 0.5) * dt;
+    const n = Math.floor(a.pay);
+    if (!n) return;
+    a.pay -= n;
+    a.earned = (a.earned || 0) + n;
+    c.coins += n;
+  },
   actReward(c, a) {
     if (!c.ctrl || a.kind === 'fight') return;
+    if (a.earned) this.notify(c, `仕事で${a.earned}コイン稼いだ`);
     const n = ACT_COINS[a.cat];
     if (n) c.coins += randInt(n, n * 2);
   },

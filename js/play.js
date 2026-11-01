@@ -1,7 +1,7 @@
 // キャラ操作の画面: 操作パネルと手動の戦闘
-import { escapeHtml } from './util.js?v=47';
-import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=47';
-import { ownerHash } from './control.js?v=47';
+import { escapeHtml } from './util.js?v=48';
+import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=48';
+import { ownerHash } from './control.js?v=48';
 
 const $ = (s) => document.querySelector(s);
 const TOKEN_KEY = 'oc-multiverse-player';
@@ -110,7 +110,7 @@ export class Play {
     return `<div class="pl-head"><h3>🎮 ${escapeHtml(c.name)} <small>Lv${c.lv}</small><button class="btn" data-cam="1" title="操作中のキャラを映す">📍 カメラ</button></h3>`
       + `<div class="pl-exp"><i style="width:${Math.min(100, (c.exp / need) * 100)}%"></i></div>`
       + `<div class="pl-st"><span>🪙 <b>${c.coins}</b></span><span>🍙 <b>${c.food}</b>${c.hungry ? `（空腹${c.hungry}日）` : ''}</span><span>🌀 <b>${sim.fmtPt(c.pts)}</b>/${sim.fmtPt(sim.ptCap(c))}pt</span>${c.halvedDay === sim.day ? '<span>😵 力が半減中</span>' : ''}</div>`
-      + `<div class="pl-st">${escapeHtml(sim.displayAct(c).text)}</div>`
+      + `<div class="pl-st">${escapeHtml(sim.displayAct(c).text)}${c.act.earned ? `（+${c.act.earned}🪙）` : ''}</div>`
       + `<div class="pl-tog"><label><input type="checkbox" data-cmd="auto" ${c.ctrl.auto ? 'checked' : ''}> 自動移動</label><label><input type="checkbox" data-cmd="home" ${c.ctrl.home ? 'checked' : ''}> 自動帰宅</label></div></div>`;
   }
   btn(op, label, a = null, cls = '') { return `<button data-op="${op}" ${a ? `data-a='${escapeHtml(JSON.stringify(a))}'` : ''} class="${cls}">${label}</button>`; }

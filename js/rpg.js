@@ -1,9 +1,9 @@
 // レベル・戦闘・宇宙の魔物・救難信号・お金と持ち物 (Sim に足すメソッド)
-import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=47';
-import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=47';
-import { splitTypes } from './types.js?v=47';
-import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=47';
-import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=47';
+import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=48';
+import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=48';
+import { splitTypes } from './types.js?v=48';
+import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=48';
+import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=48';
 
 const TURN_SEC = 0.9; // 自動の戦闘の1ターンの長さ (秒)
 const FIGHT_MIN = 2 / 60, FIGHT_MAX = 8 / 60; // 自動の戦闘の長さ (分)

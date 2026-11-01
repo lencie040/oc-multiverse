@@ -1,10 +1,10 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=47';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=47';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=47';
-import { loadBattleData } from './battle.js?v=47';
-import { RPG } from './rpg.js?v=47';
-import { Control } from './control.js?v=47';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=48';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=48';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=48';
+import { loadBattleData } from './battle.js?v=48';
+import { RPG } from './rpg.js?v=48';
+import { Control } from './control.js?v=48';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -350,6 +350,7 @@ export class Sim {
       }
       return;
     }
+    if (c.act.cat === 'work' && this.playerHolds(c)) this.workPay(c, dt);
     if (this.t >= c.act.until) {
       this.onDone(c);
       if (c.state === 'down' || c.walking || this.t < c.act.until) return;
