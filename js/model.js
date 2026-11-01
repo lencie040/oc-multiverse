@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=46';
-import { themeOf } from './themes.js?v=46';
+import { seeded, hashStr } from './util.js?v=47';
+import { themeOf } from './themes.js?v=47';
 
 export const MAX_LEVEL = 300;
 export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限

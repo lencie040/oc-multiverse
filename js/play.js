@@ -1,7 +1,7 @@
 // キャラ操作の画面: 操作パネルと手動の戦闘
-import { escapeHtml } from './util.js?v=46';
-import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=46';
-import { ownerHash } from './control.js?v=46';
+import { escapeHtml } from './util.js?v=47';
+import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=47';
+import { ownerHash } from './control.js?v=47';
 
 const $ = (s) => document.querySelector(s);
 const TOKEN_KEY = 'oc-multiverse-player';
@@ -48,6 +48,17 @@ export class Play {
     app.selectChar(id, { focus: true });
     app.ui.setSheet('play', true);
   }
+  // 操作中のキャラの所へカメラを動かし、そのまま追いかける
+  showMe() {
+    const { app } = this, c = this.me;
+    if (!c) return;
+    if (app.director.on) app.director.toggle(false);
+    app.stopFollow(); // 追跡中だと同じ世界線では映し直さないので、いったん外す
+    app.selectChar(c.id, { focus: true });
+    app.following = true;
+    app.ui.lastInfo = '';
+    app.ui.setSheet(null);
+  }
   // 地面をタップしたらそこへ歩く
   tapGround(ndc) {
     const c = this.me, v = this.app.view;
@@ -59,8 +70,9 @@ export class Play {
     return true;
   }
   onClick(e) {
-    const b = e.target.closest('[data-tab],[data-op],[data-ask]');
+    const b = e.target.closest('[data-tab],[data-op],[data-ask],[data-cam]');
     if (!b) return;
+    if (b.dataset.cam) return this.showMe();
     if (b.dataset.ask) { this.asking = b.dataset.ask === 'yes'; this.lastHtml = ''; return this.draw(); }
     if (b.dataset.tab) { this.tab = b.dataset.tab; this.asking = false; this.lastHtml = ''; return this.draw(); }
     this.send(b.dataset.op, b.dataset.a ? JSON.parse(b.dataset.a) : {});
@@ -95,7 +107,7 @@ export class Play {
   }
   head(c) {
     const { sim } = this.app, need = sim.expNeed(c.lv);
-    return `<div class="pl-head"><h3>🎮 ${escapeHtml(c.name)} <small>Lv${c.lv}</small></h3>`
+    return `<div class="pl-head"><h3>🎮 ${escapeHtml(c.name)} <small>Lv${c.lv}</small><button class="btn" data-cam="1" title="操作中のキャラを映す">📍 カメラ</button></h3>`
       + `<div class="pl-exp"><i style="width:${Math.min(100, (c.exp / need) * 100)}%"></i></div>`
       + `<div class="pl-st"><span>🪙 <b>${c.coins}</b></span><span>🍙 <b>${c.food}</b>${c.hungry ? `（空腹${c.hungry}日）` : ''}</span><span>🌀 <b>${sim.fmtPt(c.pts)}</b>/${sim.fmtPt(sim.ptCap(c))}pt</span>${c.halvedDay === sim.day ? '<span>😵 力が半減中</span>' : ''}</div>`
       + `<div class="pl-st">${escapeHtml(sim.displayAct(c).text)}</div>`
