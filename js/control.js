@@ -1,11 +1,11 @@
 // キャラ操作: 見ている人からの命令を受けて、そのキャラを動かす (Sim に足すメソッド)
 // 命令はホストだけが実行する。結果は普段の同期で全員に届く
-import { rand, randInt, pick, dist2, hashStr } from './util.js?v=42';
-import { randomTown, powerAt } from './model.js?v=42';
-import { monsterType } from './types.js?v=42';
-import { makeUnit, autoBattle } from './battle.js?v=42';
-import { ITEMS } from './items.js?v=42';
-import { CTRL_EXPIRE } from './rpg.js?v=42';
+import { rand, randInt, pick, dist2, hashStr } from './util.js?v=43';
+import { randomTown, powerAt } from './model.js?v=43';
+import { monsterType } from './types.js?v=43';
+import { makeUnit, autoBattle } from './battle.js?v=43';
+import { ITEMS } from './items.js?v=43';
+import { CTRL_EXPIRE } from './rpg.js?v=43';
 
 // 操作して何かをやり遂げた時のコイン (難しいことほど多い)
 const ACT_COINS = { work: 30, training: 20, explore: 25, help: 20, social: 8, hobby: 6, sabori: 2, daily: 3 };

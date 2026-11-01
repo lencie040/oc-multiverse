@@ -1,12 +1,12 @@
 // キャラ操作の画面: 操作パネルと手動の戦闘
-import { escapeHtml } from './util.js?v=42';
-import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=42';
-import { ownerHash } from './control.js?v=42';
+import { escapeHtml } from './util.js?v=43';
+import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=43';
+import { ownerHash } from './control.js?v=43';
 
 const $ = (s) => document.querySelector(s);
 const TOKEN_KEY = 'oc-multiverse-player';
 const PING_SEC = 10;
-const TABS = [['act', '行動'], ['move', '移動'], ['bag', '持ち物'], ['shop', '店'], ['net', 'GUDAZON'], ['ab', '特性']];
+const TABS = [['act', '行動'], ['move', '移動'], ['bag', '持ち物'], ['shop', '店'], ['net', 'GUDAZON'], ['ab', '特性'], ['etc', 'その他']];
 const ACTS = [['work', '🔨 仕事'], ['hobby', '🎨 趣味'], ['train', '🥋 修行'], ['explore', '🧭 探検'], ['battle', '⚔️ 魔物退治'], ['chat', '💬 おしゃべり'], ['visit', '🏠 遊びに行く'], ['help', '🤝 手伝い'], ['shop', '🛍️ 買い物に行く'], ['eat', '🍙 ごはん'], ['water', '🥤 水を飲む'], ['sabori', '🛋️ サボる'], ['walkabout', '👣 散歩'], ['camp', '⛺ 野宿']];
 const CAT = { p: '物理', s: '特殊', x: '変化', v: '虚空', a: '反質', f: '封印' };
 
@@ -59,11 +59,12 @@ export class Play {
     return true;
   }
   onClick(e) {
-    const b = e.target.closest('[data-tab],[data-op]');
+    const b = e.target.closest('[data-tab],[data-op],[data-ask]');
     if (!b) return;
-    if (b.dataset.tab) { this.tab = b.dataset.tab; this.lastHtml = ''; return this.draw(); }
+    if (b.dataset.ask) { this.asking = b.dataset.ask === 'yes'; this.lastHtml = ''; return this.draw(); }
+    if (b.dataset.tab) { this.tab = b.dataset.tab; this.asking = false; this.lastHtml = ''; return this.draw(); }
     this.send(b.dataset.op, b.dataset.a ? JSON.parse(b.dataset.a) : {});
-    if (b.dataset.op === 'release') { this.app.stopFollow(); this.lastHtml = ''; }
+    if (b.dataset.op === 'release') { this.app.stopFollow(); this.asking = false; this.lastHtml = ''; }
   }
   tick(dt) {
     const c = this.me;
@@ -94,7 +95,7 @@ export class Play {
   }
   head(c) {
     const { sim } = this.app, need = sim.expNeed(c.lv);
-    return `<div class="pl-head"><h3>🎮 ${escapeHtml(c.name)} <small>Lv${c.lv}</small><button class="btn" data-op="release">操作をやめる</button></h3>`
+    return `<div class="pl-head"><h3>🎮 ${escapeHtml(c.name)} <small>Lv${c.lv}</small></h3>`
       + `<div class="pl-exp"><i style="width:${Math.min(100, (c.exp / need) * 100)}%"></i></div>`
       + `<div class="pl-st"><span>🪙 <b>${c.coins}</b></span><span>🍙 <b>${c.food}</b>${c.hungry ? `（空腹${c.hungry}日）` : ''}</span><span>🌀 <b>${sim.fmtPt(c.pts)}</b>/${sim.fmtPt(sim.ptCap(c))}pt</span>${c.halvedDay === sim.day ? '<span>😵 力が半減中</span>' : ''}</div>`
       + `<div class="pl-st">${escapeHtml(sim.displayAct(c).text)}</div>`
@@ -164,6 +165,11 @@ export class Play {
     const orders = c.orders.length ? '<div class="pl-sec">配送中</div>' + c.orders.map((o) => `<div class="pl-row"><span>${escapeHtml(ITEMS[o.id].name)}<small>あと${Math.max(1, Math.ceil((o.at - sim.t) / 60))}時間で届く</small></span></div>`).join('') : '';
     return `<p class="pl-note">GUDAZON SHOP: 注文の1日後に確実に届きます。現代から遠いほど高くなります。</p>${orders}`
       + onlineItems().map((id) => `<div class="pl-row"><span>${escapeHtml(ITEMS[id].name)}<small>${escapeHtml(ITEMS[id].desc)}</small></span>${this.btn('order', `${onlinePrice(id, dist)}🪙`, { id })}</div>`).join('');
+  }
+  // 間違えて押さないよう、タブの奥で確認してからやめる
+  tab_etc(c) {
+    if (!this.asking) return `<p class="pl-note">操作をやめると、${escapeHtml(c.name)}は自分で行動するようになります。誰かが操作を始めると、戻れなくなることがあります。</p><div class="pl-grid"><button data-ask="yes">操作をやめる…</button></div>`;
+    return `<p class="pl-note">本当に${escapeHtml(c.name)}の操作をやめますか？</p><div class="pl-grid"><button data-ask="no">やめない</button>${this.btn('release', 'やめる')}</div>`;
   }
   tab_ab(c) {
     const { sim } = this.app;

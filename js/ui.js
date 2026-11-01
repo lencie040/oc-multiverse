@@ -1,8 +1,8 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=42';
-import { prioOf } from './director.js?v=42';
-import { fmtTime, escapeHtml, colorOf, luminance, ultraUp, isPhone } from './util.js?v=42';
-import { typeSummary, TYPE_COLOR } from './types.js?v=42';
+import { CATS } from './sim.js?v=43';
+import { prioOf } from './director.js?v=43';
+import { fmtTime, escapeHtml, colorOf, luminance, ultraUp, isPhone } from './util.js?v=43';
+import { typeSummary, TYPE_COLOR } from './types.js?v=43';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];

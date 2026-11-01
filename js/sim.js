@@ -1,10 +1,10 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=42';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=42';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=42';
-import { loadBattleData } from './battle.js?v=42';
-import { RPG } from './rpg.js?v=42';
-import { Control } from './control.js?v=42';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=43';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=43';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=43';
+import { loadBattleData } from './battle.js?v=43';
+import { RPG } from './rpg.js?v=43';
+import { Control } from './control.js?v=43';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -71,6 +71,7 @@ const SYNC_KEYS = [...SAVE_KEYS, 'bubble', 'emote'];
 const ACT_SCALE = 0.15;
 const SCALED_KINDS = new Set(['idle', 'train', 'explore', 'visit', 'help', 'chat']);
 const WALK_SPEED = 90; // 1分あたりの移動距離 (現実と同じ時間の流れで、歩く様子が見える速さ)
+const PLAYER_WALK = 8; // 操作中のキャラの歩く速さの倍率 (島を十数秒で横切れる)
 const MAX_EVENTS = 500;
 
 export class Sim {
@@ -339,7 +340,7 @@ export class Sim {
     if (c.act.kind === 'defend') return this.defendStep(c, dt);
     if (c.walking) {
       const d = Math.sqrt(dist2(c.x, c.z, c.dest.x, c.dest.z));
-      const s = WALK_SPEED * (c.trip ? 1.4 : 1) * dt;
+      const s = this.walkSpeed(c) * dt;
       if (d <= s) {
         c.x = c.dest.x; c.z = c.dest.z; c.walking = false;
         c.act.until = this.t + c.act.dur;
@@ -669,9 +670,10 @@ export class Sim {
       if (r) done(r);
     } else if (mo.engagedBy && mo.engagedBy !== c.id && Math.sqrt(dist2(c.x, c.z, mo.x, mo.z)) < 2) c.act.target = null;
   }
+  walkSpeed(c) { return WALK_SPEED * (c.ctrl ? PLAYER_WALK : c.trip ? 1.4 : 1); }
   stepToward(c, x, z, dt) {
     const d = Math.sqrt(dist2(c.x, c.z, x, z));
-    const s = WALK_SPEED * dt;
+    const s = this.walkSpeed(c) * dt;
     if (d <= s) { c.x = x; c.z = z; c.walking = false; return 0; }
     c.x += ((x - c.x) / d) * s; c.z += ((z - c.z) / d) * s;
     c.walking = true;
@@ -1706,7 +1708,7 @@ export class Sim {
       }
       if (!c.walking || !c.dest) continue;
       const d = Math.sqrt(dist2(c.x, c.z, c.dest.x, c.dest.z));
-      const s = WALK_SPEED * (c.trip ? 1.4 : 1) * dt;
+      const s = this.walkSpeed(c) * dt;
       if (d <= s) { c.x = c.dest.x; c.z = c.dest.z; c.walking = false; } else { c.x += ((c.dest.x - c.x) / d) * s; c.z += ((c.dest.z - c.z) / d) * s; }
     }
     for (const list of this.monsters.values()) {
