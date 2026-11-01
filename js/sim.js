@@ -1,7 +1,7 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=37';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost } from './model.js?v=37';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=37';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=38';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost } from './model.js?v=38';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=38';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -454,7 +454,7 @@ export class Sim {
     }
     if (c.world !== c.home) {
       // 旅の途中で状態が外れた → 帰る旅を開始
-      c.trip = { mode: 'far', goingHome: true, acts: 0, hops: 0, campOk: false };
+      c.trip = { mode: 'far', goingHome: true, acts: 0, hops: 0, hopsDone: 0, campOk: false, visited: [c.world] };
       return this.decideTrip(c);
     }
     const h = this.hour;
@@ -1708,6 +1708,8 @@ export class Sim {
       delete c.movesLeft; delete c.lastDan;
       c.bdayParty ??= -1; c.contestWins ??= 0;
       c.trainDay ??= -1; c.treasures ??= 0; c.raidWins ??= 0; c.transit ??= null; c.friends ??= {};
+      // 以前の版が作った、訪問記録のない帰り道の旅も直しておく
+      if (c.trip) { c.trip.visited ??= [c.world]; c.trip.hopsDone = c.trip.hopsDone || 0; }
       c.log = this.events.filter((e) => e.ids.includes(c.id)).slice(-30);
     }
     return true;

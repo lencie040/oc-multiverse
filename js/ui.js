@@ -1,11 +1,26 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=37';
-import { prioOf } from './director.js?v=37';
-import { fmtTime, escapeHtml, colorOf, luminance, ultraUp } from './util.js?v=37';
-import { typeSummary, TYPE_COLOR } from './types.js?v=37';
+import { CATS } from './sim.js?v=38';
+import { prioOf } from './director.js?v=38';
+import { fmtTime, escapeHtml, colorOf, luminance, ultraUp, isPhone } from './util.js?v=38';
+import { typeSummary, TYPE_COLOR } from './types.js?v=38';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
+
+// 一覧のクリックは描き換えの影響を受けないよう pointerdown で拾う。
+// 指の場合は押した瞬間に反応するとスクロールできないので、動かさずに離した時だけ反応する
+function tap(box, fn) {
+  box.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return fn(e);
+    const end = (u) => {
+      removeEventListener('pointerup', end);
+      removeEventListener('pointercancel', end);
+      if (u.type === 'pointerup' && Math.hypot(u.clientX - e.clientX, u.clientY - e.clientY) < 12) fn(e);
+    };
+    addEventListener('pointerup', end);
+    addEventListener('pointercancel', end);
+  });
+}
 
 export class UI {
   constructor(app) {
@@ -13,6 +28,20 @@ export class UI {
     this.evFilter = 'all';
     this.infoT = 0;
     this.lastInfo = '';
+    this.sheet = null;
+    this.phone = false;
+    // スマホの画面で設定シートへ移す物と、元の場所
+    this.homes = ['#tg-space', '#tg-news', '#searchbox', '#toggles', '#settings', '#soundbox'].map((s) => {
+      const el = $(s);
+      return { el, parent: el.parentNode, next: el.nextSibling };
+    });
+    this.syncPhone();
+    $('#tabbar').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.sheet) this.setSheet(b.dataset.sheet);
+      else app.director.toggle();
+    });
 
     $('#tg-names').addEventListener('change', (e) => { app.settings.names = e.target.checked; });
     $('#tg-wnames').addEventListener('change', (e) => {
@@ -61,7 +90,6 @@ export class UI {
       this.renderEvents();
     });
 
-    // 一覧クリックは描き換えの影響を受けないよう pointerdown で拾う
     const nav = (e) => {
       const el = e.target.closest('[data-w],[data-c],[data-dan],[data-act]');
       if (!el || e.button !== 0) return;
@@ -73,8 +101,8 @@ export class UI {
       if (el.dataset.w) return app.openWorld(el.dataset.w);
       if (el.dataset.dan) return app.openDan(el.dataset.dan);
     };
-    $('#info').addEventListener('pointerdown', nav);
-    $('#evlist').addEventListener('pointerdown', (e) => {
+    tap($('#info'), nav);
+    tap($('#evlist'), (e) => {
       const el = e.target.closest('.ev');
       if (!el || e.button !== 0) return;
       if (el.dataset.c) app.selectChar(el.dataset.c, { focus: true });
@@ -105,6 +133,37 @@ export class UI {
   whereChip(c, link = false) {
     const tr = this.app.sim.transitOf(c);
     return tr ? `${tr.kind === 'dan' ? '🌌' : '🌀'}${this.wchip(tr.from, link)}→${this.wchip(tr.to, link)}` : this.wchip(c.world, link);
+  }
+
+  // ---------- スマホの画面 ----------
+  // 画面の大きさが変わったら、パソコンの画面とスマホの画面を切り替える
+  syncPhone() {
+    const phone = isPhone();
+    if (phone === this.phone) return;
+    this.setSheet(null);
+    this.phone = phone;
+    document.body.classList.toggle('mobile', phone);
+    const search = $('#search');
+    if (phone) {
+      const [space, news, box, toggles, settings, sound] = this.homes.map((h) => h.el);
+      document.body.append(box, settings);
+      $('#m-extra').append(space, news, toggles, sound);
+      search.placeholder = '世界線・キャラを検索';
+    } else {
+      for (const h of [...this.homes].reverse()) h.parent.insertBefore(h.el, h.next);
+      search.placeholder = '世界線・キャラを検索（/）';
+    }
+    $('#settings').hidden = true;
+  }
+  // 下から出るシートを開く。同じタブをもう一度押すと閉じる (keep なら開いたまま)
+  setSheet(name, keep = false) {
+    if (!this.phone) return;
+    this.sheet = !keep && this.sheet === name ? null : name;
+    for (const s of ['events', 'info', 'settings', 'search']) document.body.classList.toggle('sheet-' + s, this.sheet === s);
+    $('#settings').hidden = this.sheet !== 'settings';
+    for (const b of document.querySelectorAll('#tabbar [data-sheet]')) b.classList.toggle('on', b.dataset.sheet === this.sheet);
+    if (this.sheet === 'search') $('#search').focus();
+    else $('#search').blur();
   }
 
   // ---------- パンくず・タイトル ----------
@@ -343,6 +402,7 @@ export class UI {
       res.hidden = true;
       input.value = '';
       input.blur();
+      this.setSheet(null);
       if (it.type === 'w') this.app.openWorld(it.id);
       else this.app.selectChar(it.id, { focus: true });
     };
@@ -360,7 +420,7 @@ export class UI {
       if (cs.length) html += '<div class="grp">キャラクター</div>' + cs.map((c) => `<div class="r"><span>${escapeHtml(c.name)}</span><small>${this.whereChip(c)}</small></div>`).join('');
       res.innerHTML = html || '<div class="grp">見つかりません</div>';
       res.hidden = false;
-      res.querySelectorAll('.r').forEach((el, i) => el.addEventListener('pointerdown', (e) => { e.preventDefault(); go(items[i]); }));
+      res.querySelectorAll('.r').forEach((el, i) => tap(el, (e) => { e.preventDefault(); go(items[i]); }));
       draw();
     });
     input.addEventListener('keydown', (e) => {
@@ -556,7 +616,7 @@ export class UI {
     return `<button class="close" data-act="close" title="閉じる (Esc)">×</button>`
       + `<div class="avatar">${avatar}</div>`
       + `<h2>${sim.isBirthday(c) ? '🎂 ' : ''}${escapeHtml(c.name)}</h2><div class="sub">${escapeHtml(c.yomi)} ・ No.${escapeHtml(c.id)}</div>`
-      + `<div class="btns"><button class="btn ${following ? 'on' : ''}" data-act="follow">🎥 ${following ? '追跡中' : '追跡する'} (T)</button>`
+      + `<div class="btns"><button class="btn ${following ? 'on' : ''}" data-act="follow">🎥 ${following ? '追跡中' : '追跡する'}${this.phone ? '' : ' (T)'}</button>`
       + `<button class="btn ${settings.oshi.includes(c.id) ? 'on' : ''}" data-act="oshi">⭐ ${settings.oshi.includes(c.id) ? '推し' : '推しにする'}</button>`
       + (this.app.view.worldId !== c.world || sim.transitOf(c) ? `<button class="btn" data-c="${escapeHtml(c.id)}">📍 いる場所へ</button>` : '') + `</div>`
       + `<h3>いま</h3><div class="row" style="cursor:default"><i class="ico" style="background:${CATS[d.cat]?.color}">${d.icon}</i>${escapeHtml(d.text)}</div>`

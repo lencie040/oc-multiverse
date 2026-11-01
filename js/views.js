@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=37';
-import { TYPE_COLOR } from './types.js?v=37';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=37';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=38';
+import { TYPE_COLOR } from './types.js?v=38';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=38';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -13,8 +13,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=37';
-import { CATS } from './sim.js?v=37';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=38';
+import { CATS } from './sim.js?v=38';
 
 // グラフィック設定 (低・中・高・超高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -93,6 +93,8 @@ class BaseView {
     this.userHold = 0;
     this.controls.addEventListener('start', () => { this.userHold = 6; });
   }
+  // 縦長の画面は左右が狭いので、そのぶん引いて全体を入れる
+  get widen() { return Math.max(1, 1.7 / this.camera.aspect); }
   // 宇宙の背景: 星雲の絵 + またたく星 + すれ違う塵
   spaceBackdrop(key, cols, fallback) {
     if (this.quality === 'low') { this.scene.add(fallback); return; }
@@ -277,6 +279,12 @@ class BaseView {
   clearArea() {
     const rect = (id) => { const r = document.getElementById(id)?.getBoundingClientRect(); return r?.width ? r : null; };
     const W = innerWidth, H = innerHeight;
+    if (document.body.classList.contains('mobile')) {
+      // スマホ: 開いているシート (縦持ちは下、横持ちは右) とタブに隠れていない範囲
+      const sheet = ['events', 'info', 'settings'].map(rect).find(Boolean), side = sheet && sheet.width < W * 0.8;
+      const t = rect('top')?.bottom ?? 0, b = sheet && !side ? sheet.top : rect('tabbar')?.top ?? H, r = side ? sheet.left : W;
+      return { cx: r / W - 1, cy: 1 - (t + b) / H, fx: Math.max(0.3, r / W), fy: Math.max(0.2, (b - t) / H) };
+    }
     const l = rect('events')?.right ?? 0, r = rect('info')?.left ?? W;
     const t = Math.max(rect('top')?.bottom ?? 0, H * 0.07), b = Math.min(rect('help')?.top ?? H, H * 0.93);
     return { cx: (l + r) / W - 1, cy: 1 - (t + b) / H, fx: Math.max(0.3, (r - l) / W), fy: Math.max(0.3, (b - t) / H) };
@@ -482,10 +490,10 @@ export class UniverseView extends BaseView {
     this.scene.add(new THREE.LineSegments(lg, new THREE.LineDashedMaterial({ color: '#9fb0ff', transparent: true, opacity: 0.35, dashSize: 12, gapSize: 8 })).computeLineDistances());
     const center = box.getCenter(new THREE.Vector3());
     const span = box.getSize(new THREE.Vector3()).length();
-    this.camera.position.set(center.x, center.y + span * 0.55, center.z + span * 0.95);
+    this.camera.position.set(center.x, center.y + span * 0.55 * this.widen, center.z + span * 0.95 * this.widen);
     this.controls.target.copy(center);
     this.controls.minDistance = 30;
-    this.controls.maxDistance = span * 3;
+    this.controls.maxDistance = span * 3 * this.widen;
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.25;
     this.bound = span;
@@ -613,9 +621,9 @@ export class ClusterView extends BaseView {
     const hue = new THREE.Color(dan.color);
     this.spaceBackdrop('dan:' + danId, ['#070a1e', hue.clone().multiplyScalar(0.4).getStyle(), '#6a2a8a'], starfield(3000, Math.max(900, maxR * 5)));
     this.maxR = maxR;
-    this.camera.position.set(0, maxR * 0.6, maxR * 1.1);
+    this.camera.position.set(0, maxR * 0.6 * this.widen, maxR * 1.1 * this.widen);
     this.controls.minDistance = this.ultra ? 2 : 10;
-    this.controls.maxDistance = maxR * 5;
+    this.controls.maxDistance = maxR * 5 * this.widen;
     this.bound = maxR * 1.2;
     this.refreshT = 0;
     this.refresh();
@@ -1309,10 +1317,10 @@ export class WorldView extends BaseView {
     this.selRing.visible = false;
     this.scene.add(this.selRing);
 
-    this.camera.position.set(0, R * 0.55, R * 0.95);
+    this.camera.position.set(0, R * 0.55 * this.widen, R * 0.95 * this.widen);
     this.controls.target.set(0, 0, 0);
     this.controls.minDistance = 5;
-    this.controls.maxDistance = R * 2.8;
+    this.controls.maxDistance = R * 2.8 * this.widen;
     this.controls.maxPolarAngle = 1.42;
     this.elapsed = 0;
     this.applyLabelSettings();

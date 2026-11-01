@@ -1,5 +1,5 @@
 // BGM・環境音・効果音。音声ファイルは使わず Web Audio API でその場で作曲・合成する
-import { hashStr, seeded } from './util.js?v=37';
+import { hashStr, seeded } from './util.js?v=38';
 
 const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 const MINOR = [0, 2, 3, 5, 7, 8, 10];
@@ -62,10 +62,13 @@ export class Sound {
     this.mood = null;
     this.night = false;
     this.last = {};
-    // 自動再生の制限があるので、最初の操作で音を出し始める
-    const start = () => { this.init(); removeEventListener('pointerdown', start); removeEventListener('keydown', start); };
-    addEventListener('pointerdown', start);
-    addEventListener('keydown', start);
+    // 自動再生の制限があるので、操作された時に音を出し始める。スマホは指を離す時でないと始められず、
+    // 別のアプリから戻った時に止まっていることもあるので、止まっていたら次の操作でまた鳴らす
+    const wake = () => {
+      this.init();
+      if (this.ctx && this.ctx.state !== 'running' && !document.hidden) this.ctx.resume();
+    };
+    for (const k of ['pointerdown', 'pointerup', 'touchend', 'keydown']) addEventListener(k, wake);
     // タブが隠れている・最小化されている間は音を止める
     document.addEventListener('visibilitychange', () => this.syncVisibility());
     addEventListener('pagehide', () => this.ctx?.suspend());

@@ -88,3 +88,6 @@ export function escapeHtml(s) {
 
 // グラフィック「超高」と「最高」の共通の機能 (宇宙から世界線の中が見える等) を使える設定か
 export const ultraUp = (q) => q === 'ultra' || q === 'max';
+
+// スマホの画面か (縦持ち・横持ち)。パソコンの細い窓でも同じ画面にする
+export const isPhone = () => matchMedia('(max-width: 760px), (max-height: 500px)').matches;

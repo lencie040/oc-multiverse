@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=37';
-import { Sim } from './sim.js?v=37';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=37';
-import { UI } from './ui.js?v=37';
-import { Director } from './director.js?v=37';
-import { Sound, moodOf } from './audio.js?v=37';
-import { MIN_PER_DAY, nowGameT, ultraUp } from './util.js?v=37';
-import { Sync } from './sync.js?v=37';
-import { PostFX } from './fx.js?v=37';
+import { buildModel } from './model.js?v=38';
+import { Sim } from './sim.js?v=38';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=38';
+import { UI } from './ui.js?v=38';
+import { Director } from './director.js?v=38';
+import { Sound, moodOf } from './audio.js?v=38';
+import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=38';
+import { Sync } from './sync.js?v=38';
+import { PostFX } from './fx.js?v=38';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -16,12 +16,19 @@ const SETTINGS_KEY = 'oc-multiverse-settings';
 const PIXEL_RATIO = { low: 0.75, mid: 1, high: 1.5, ultra: 2, max: 2 };
 // 重さのほとんどは描くピクセルの数で決まるので、大きな画面でも 2560×1440 ぶんまでに抑える
 const MAX_PIXELS = 3.7e6;
-const pixelRatio = (q) => Math.min(devicePixelRatio, PIXEL_RATIO[q] ?? 2, Math.sqrt(MAX_PIXELS / (innerWidth * innerHeight)));
+// スマホは画面が小さいので、細かく描きつつ、描くピクセルの数はもっと抑える
+const PHONE_RATIO = { low: 1, mid: 1.5, high: 1.75, ultra: 2, max: 2 }, PHONE_PIXELS = 1.4e6;
+const pixelRatio = (q) => {
+  const phone = isPhone();
+  return Math.min(devicePixelRatio, (phone ? PHONE_RATIO : PIXEL_RATIO)[q] ?? 2, Math.sqrt((phone ? PHONE_PIXELS : MAX_PIXELS) / (innerWidth * innerHeight)));
+};
+// タップが小さな物の少し横に外れても拾えるように、まわりも調べる
+const NEAR_TAP = [[0, -22], [0, 22], [-22, 0], [22, 0], [-16, -16], [16, -16], [-16, 16], [16, 16]];
 
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=37').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=38').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -34,7 +41,7 @@ class App {
     // 閉じていた間の出来事を進めて、現実の時刻に追いつく (同期中はホストが進める)
     if (this.sync.role === 'solo') this.sim.catchUp();
 
-    this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true, gfx: 'high', ui: 1, oshi: [] };
+    this.settings = { names: true, worldNames: true, minor: false, toasts: true, news: true, gfx: isPhone() ? 'mid' : 'high', ui: 1, oshi: [] };
     try { Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* 保存できない環境 */ }
     this.sound = new Sound();
     this.sim.listen((e) => { this.eventSound(e); this.view?.onSimEvent?.(e); });
@@ -209,11 +216,12 @@ class App {
 
   selectChar(id, opts = {}) {
     this.selected = id;
-    if (!id) { this.stopFollow(); this.ui.renderInfo(); return; }
+    if (!id) { this.stopFollow(); this.ui.renderInfo(); if (this.ui.sheet === 'info') this.ui.setSheet(null); return; }
     const c = this.model.charById.get(id);
     if (opts.focus) this.goToChar(c, this.following);
     this.ui.lastInfo = '';
     this.ui.renderInfo();
+    if (!this.director.on) this.ui.setSheet('info', true);
   }
   toggleFollow() {
     if (!this.selected) return;
@@ -232,17 +240,31 @@ class App {
   bindInput() {
     const el = this.renderer.domElement;
     const ndc = (e) => new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-    let down = null;
-    el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
-    el.addEventListener('pointerup', (e) => {
-      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5 && this.view.click(ndc(e))) this.sound.play('click');
-      down = null;
+    let down = null, pinch = false;
+    const fingers = new Set();
+    const lift = (e) => { fingers.delete(e.pointerId); if (!fingers.size) pinch = false; };
+    el.addEventListener('pointerdown', (e) => {
+      fingers.add(e.pointerId);
+      if (fingers.size > 1) pinch = true;
+      down = { x: e.clientX, y: e.clientY };
     });
+    el.addEventListener('pointerup', (e) => {
+      const touch = e.pointerType === 'touch';
+      const tap = down && !pinch && Math.hypot(e.clientX - down.x, e.clientY - down.y) < (touch ? 12 : 5);
+      lift(e);
+      down = null;
+      if (!tap) return;
+      const hit = this.view.click(ndc(e)) || (touch && NEAR_TAP.some(([x, y]) => this.view.click(ndc({ clientX: e.clientX + x, clientY: e.clientY + y }))));
+      if (hit) this.sound.play('click');
+      else this.ui.setSheet(null); // 何もない所をタップしたらシートを閉じる
+    });
+    el.addEventListener('pointercancel', (e) => { lift(e); down = null; });
     el.addEventListener('pointermove', (e) => {
       if (down) return;
       el.style.cursor = this.view.hover(ndc(e)) ? 'pointer' : '';
     });
     addEventListener('resize', () => {
+      this.ui.syncPhone();
       this.renderer.setPixelRatio(pixelRatio(this.settings.gfx));
       this.renderer.setSize(innerWidth, innerHeight);
       this.labels.setSize(innerWidth, innerHeight);

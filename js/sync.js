@@ -10,6 +10,8 @@ const SAVE_EVERY = 120000;
 const MAX_MSG = 90000; // 1回の送信の大きさの目安 (文字数)
 // このファイルの版 (?v=N)。新しい版の人がいればその人がホストになり、古い版の画面は自動で読み込み直す
 const APP_V = Number(new URL(import.meta.url).searchParams.get('v')) || 0;
+// スマホは閉じられやすいので、パソコンがいればパソコンにホストを任せる
+const PHONE = matchMedia('(max-width: 760px), (max-height: 500px)').matches ? 1 : 0;
 
 // 小数は2桁に丸めて小さくする
 const round = (k, v) => (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 100) / 100 : v);
@@ -58,7 +60,7 @@ export class Sync {
     this.ch.on('broadcast', { event: 'hello' }, () => { if (this.role === 'host') this.resetSent(); });
     this.ch.subscribe(async (status) => {
       if (status !== 'SUBSCRIBED') return;
-      await this.ch.track({ since: this.since, v: APP_V });
+      await this.ch.track({ since: this.since, v: APP_V, phone: PHONE });
       // 少し待ってもほかに誰もいなければ自分がホスト
       setTimeout(() => this.elect(), 1500);
     });
@@ -69,7 +71,7 @@ export class Sync {
   elect() {
     if (!this.ch) return;
     const st = this.ch.presenceState();
-    const members = Object.entries(st).map(([id, metas]) => ({ id, since: metas[0]?.since ?? Infinity, v: metas[0]?.v ?? 0 }));
+    const members = Object.entries(st).map(([id, metas]) => ({ id, since: metas[0]?.since ?? Infinity, v: metas[0]?.v ?? 0, phone: metas[0]?.phone ?? 0 }));
     if (!members.some((m) => m.id === this.id)) return;
     // 新しい版の人がいたら読み込み直す。読み込み直しても版が変わらない時 (公開が反映される前など) はくり返さない
     const newest = Math.max(...members.map((m) => m.v));
@@ -79,7 +81,7 @@ export class Sync {
       return;
     }
     this.viewers = members.length;
-    members.sort((a, b) => b.v - a.v || a.since - b.since || (a.id < b.id ? -1 : 1));
+    members.sort((a, b) => b.v - a.v || a.phone - b.phone || a.since - b.since || (a.id < b.id ? -1 : 1));
     this.setRole(members[0].id === this.id ? 'host' : 'viewer');
   }
 

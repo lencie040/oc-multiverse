@@ -294,3 +294,92 @@ body.cine::before, body.cine::after { height: 7vh; }
   74% { opacity: 1; }
   100% { opacity: 0; transform: translateY(-8px); }
 }
+
+/* スマホの画面: パネルは下から出るシート、操作は下のタブ */
+#tabbar, #m-extra, #m-help { display: none; }
+body.mobile { --tab: calc(52px + env(safe-area-inset-bottom)); touch-action: manipulation; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+body.mobile #search, body.mobile #info { -webkit-user-select: text; user-select: text; }
+body.mobile #help, body.mobile #tg-director, body.mobile #sync-st, body.mobile #tg-panels, body.mobile #tg-settings { display: none; }
+body.mobile::before, body.mobile::after { display: none; }
+body.mobile #tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; height: var(--tab); padding-bottom: env(safe-area-inset-bottom); background: rgba(12, 15, 32, .95); border-top: 1px solid var(--line); }
+#tabbar button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; background: none; border: 0; color: var(--muted); font-size: 20px; line-height: 1.1; cursor: pointer; }
+#tabbar small { font-size: 10px; }
+#tabbar button.on { color: var(--accent); background: rgba(255, 225, 74, .1); }
+#tabbar #tab-director.on { color: #ff8aaa; background: rgba(255, 90, 138, .16); }
+body.mobile #top { top: 0; left: 0; right: 0; gap: 6px; padding: calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 6px calc(8px + env(safe-area-inset-left)); border-width: 0 0 1px; border-radius: 0; background: rgba(12, 15, 32, .9); backdrop-filter: none; }
+body.mobile #crumbs { overflow-x: auto; scrollbar-width: none; }
+body.mobile #crumbs::-webkit-scrollbar { display: none; }
+body.mobile #crumbs a { flex: none; padding: 4px 9px; font-size: 12px; }
+body.mobile #clock { flex: none; gap: 3px; padding: 0; font-size: 12px; }
+/* シート */
+body.mobile #events, body.mobile #info, body.mobile #settings { position: fixed; left: 0; right: 0; top: auto; bottom: var(--tab); z-index: 13; width: auto; height: 56dvh; border-width: 1px 0 0; border-radius: 16px 16px 0 0; background: rgba(14, 18, 36, .96); backdrop-filter: none; box-shadow: 0 -10px 30px rgba(0, 0, 0, .4); }
+body.mobile #events, body.mobile #info { display: none; overscroll-behavior: contain; }
+body.mobile.sheet-events #events { display: flex; }
+body.mobile.sheet-info #info { display: block; }
+body.mobile #settings { height: auto; max-height: 72dvh; overflow-y: auto; overscroll-behavior: contain; font-size: 14px; padding: 14px 16px; gap: 12px; }
+body.mobile #settings label { white-space: normal; }
+body.mobile #settings select { min-width: 0; max-width: 100%; flex: 1; padding: 6px; font-size: 14px; }
+body.mobile #set-oshi { max-width: none; }
+body.mobile #m-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+body.mobile #m-extra .topbtn { padding: 8px 14px; font-size: 13px; }
+body.mobile #toggles { flex: 1 0 100%; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; }
+body.mobile #soundbox { flex: 1 0 100%; flex-wrap: wrap; margin: 0; }
+body.mobile #soundbox + #legend { margin: 0; }
+body.mobile #soundbox input[type=range] { width: 100px; }
+body.mobile #tg-sound { padding: 6px 12px; font-size: 16px; }
+body.mobile #track { min-width: 0; }
+body.mobile #m-help { display: block; color: var(--muted); }
+/* 検索 */
+body.mobile #searchbox { display: none; position: fixed; left: 8px; right: 8px; top: calc(44px + env(safe-area-inset-top)); z-index: 16; }
+body.mobile.sheet-search #searchbox { display: block; }
+body.mobile #search { width: 100%; padding: 10px 14px; font-size: 16px; background: #111528; }
+body.mobile #results { left: 0; right: 0; top: 48px; width: auto; max-height: 46dvh; }
+body.mobile #results .r { padding: 10px 8px; }
+/* パネルの中身 */
+body.mobile .ev { padding: 9px 8px; }
+body.mobile .btn { padding: 8px 14px; }
+body.mobile .close { padding: 2px 8px; font-size: 24px; }
+body.mobile .avatar { height: 110px; }
+body.mobile .avatar img { max-height: 100px; }
+body.mobile .avatar .kj { width: 84px; height: 84px; font-size: 46px; border-width: 4px; }
+body.mobile #info { -webkit-overflow-scrolling: touch; }
+/* 文字や演出の大きさ */
+body.mobile #wtitle { top: calc(46px + env(safe-area-inset-top)); width: 90vw; }
+body.mobile #wtitle h1 { font-size: 20px; }
+body.mobile #wtitle p { display: none; }
+body.mobile #titlecard h1 { font-size: 32px; letter-spacing: .14em; text-indent: .14em; }
+body.mobile #titlecard small, body.mobile #titlecard p { font-size: 12px; letter-spacing: .12em; }
+body.mobile #titlecard.brief { top: calc(84px + env(safe-area-inset-top)); }
+body.mobile #titlecard.brief h1 { font-size: 22px; }
+body.mobile #toasts { top: calc(84px + env(safe-area-inset-top)); width: 94vw; }
+body.mobile .toast { padding: 6px 10px; font-size: 12px; }
+body.mobile .toast.big { font-size: 13px; }
+body.mobile #caption { left: 8px; right: 8px; bottom: calc(var(--tab) + 8px); max-width: none; padding: 6px 12px; border-radius: 12px; font-size: 12px; white-space: normal; text-align: center; transform: none; }
+body.mobile.sheet-events #caption, body.mobile.sheet-info #caption, body.mobile.sheet-settings #caption { display: none; }
+body.mobile #cutin .band { min-height: 84px; padding: 10px 18vw; gap: 8px; }
+body.mobile #cutin .ic { font-size: 30px; }
+body.mobile #cutin .tx { font-size: 14px; }
+body.mobile #cutin .faces img { height: 60px; max-width: 64px; margin-left: -10px; }
+body.mobile .paper { width: 94vw; max-height: 84dvh; padding: 16px 14px; }
+body.mobile .paper .mast h1 { font-size: 22px; }
+body.mobile .paper .head { font-size: 17px; }
+body.mobile .paper .nums { gap: 3px; }
+body.mobile .paper .nums b { font-size: 15px; }
+body.mobile .paper .nums span { font-size: 9px; }
+body.mobile .dan-label b { font-size: 28px; }
+body.mobile .dan-label small { font-size: 11px; }
+body.mobile .dan-label span, body.mobile .route-label { display: none; }
+body.mobile .letter-label { font-size: 36px; }
+body.mobile .mon-label { display: none; }
+body.mobile .travel-label { font-size: 10px; }
+body.mobile .travel-label small { font-size: 9px; }
+/* 横持ち: シートは右から出して、3Dを広く見せる */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.mobile { --tab: calc(40px + env(safe-area-inset-bottom)); }
+  #tabbar button { flex-direction: row; gap: 4px; font-size: 16px; }
+  #tabbar small { font-size: 11px; }
+  body.mobile #events, body.mobile #info, body.mobile #settings { left: auto; top: calc(40px + env(safe-area-inset-top)); width: min(46vw, 400px); height: auto; max-height: none; border-width: 1px 0 0 1px; border-radius: 14px 0 0 0; }
+  body.mobile #wtitle, body.mobile #toasts, body.mobile #titlecard.brief { top: 44px; }
+  body.mobile #wtitle h1 { font-size: 16px; }
+  body.mobile #results { max-height: 36dvh; }
+}

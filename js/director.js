@@ -1,5 +1,5 @@
 // おまかせ観戦: 面白い出来事にカメラが自動で向かう
-import { weighted } from './util.js?v=37';
+import { weighted } from './util.js?v=38';
 
 // 出来事の先頭の絵文字 → 見どころ度
 const PRIO = [
@@ -74,6 +74,8 @@ export class Director {
   toggle(force) {
     this.on = force ?? !this.on;
     document.getElementById('tg-director').classList.toggle('on', this.on);
+    document.getElementById('tab-director').classList.toggle('on', this.on);
+    if (this.on) this.app.ui.setSheet(null);
     document.body.classList.toggle('cine', this.on);
     this.app.ui.caption(this.on ? '🎬 おまかせ観戦スタート！ 面白いところにカメラが向かいます' : null);
     if (this.on) this.pickIdle();

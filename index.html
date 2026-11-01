@@ -2,12 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070914">
   <title>オリキャラ多元宇宙</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=37">
+  <link rel="stylesheet" href="style.css?v=38">
   <script type="importmap">
     {
       "imports": {
@@ -49,6 +50,8 @@
       </label>
       <label>UIの大きさ <input type="range" id="set-ui" min="70" max="150" step="5"> <b id="set-ui-v"></b></label>
       <div id="set-oshi"></div>
+      <div id="m-extra"></div>
+      <small id="m-help">1本指で回す ・ 2本指で移動と拡大縮小 ・ タップで選ぶ</small>
     </div>
   </header>
 
@@ -90,6 +93,14 @@
     <span id="legend"></span>
   </footer>
 
+  <nav id="tabbar">
+    <button id="tab-director">🎬<small>おまかせ</small></button>
+    <button data-sheet="events">📜<small>出来事</small></button>
+    <button data-sheet="info">👤<small>情報</small></button>
+    <button data-sheet="search">🔍<small>検索</small></button>
+    <button data-sheet="settings">⚙️<small>設定</small></button>
+  </nav>
+
   <div id="loading">
     <div class="ld-in">
       <h1>オリキャラ多元宇宙</h1>
@@ -98,6 +109,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=37"></script>
+  <script type="module" src="js/main.js?v=38"></script>
 </body>
 </html>
