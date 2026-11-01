@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=38';
-import { Sim } from './sim.js?v=38';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=38';
-import { UI } from './ui.js?v=38';
-import { Director } from './director.js?v=38';
-import { Sound, moodOf } from './audio.js?v=38';
-import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=38';
-import { Sync } from './sync.js?v=38';
-import { PostFX } from './fx.js?v=38';
+import { buildModel } from './model.js?v=39';
+import { Sim } from './sim.js?v=39';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=39';
+import { UI } from './ui.js?v=39';
+import { Director } from './director.js?v=39';
+import { Sound, moodOf, danMoodOf } from './audio.js?v=39';
+import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=39';
+import { Sync } from './sync.js?v=39';
+import { PostFX } from './fx.js?v=39';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -28,7 +28,7 @@ const NEAR_TAP = [[0, -22], [0, 22], [-22, 0], [22, 0], [-16, -16], [16, -16], [
 class App {
   async init() {
     await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=38').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=39').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -294,7 +294,7 @@ class App {
     if (!this.spaceWatch) this.musicWorld = null;
     else if (v.kind === 'dan' && !v.framing) this.musicWorld = v.spaceWorld() ?? this.musicWorld;
     const wid = (this.spaceWatch && this.musicWorld) || v.worldId;
-    if (!wid) return this.sound.setMood('space', false, v.kind === 'dan' ? 'dan:' + v.danId : 'space');
+    if (!wid) return v.kind === 'dan' ? this.sound.setMood(danMoodOf(v.danId), false, 'dan:' + v.danId) : this.sound.setMood('space');
     const r = this.sim.raidAt(wid) || this.sim.hordeAt(wid);
     const h = this.sim.hour;
     this.sound.setMood(r ? 'battle' : moodOf(this.model.worlds.get(wid)), h >= 21 || h < 5, r ? 'raid:' + r.id : wid, this.spaceWatch);

@@ -1,5 +1,5 @@
 // BGM・環境音・効果音。音声ファイルは使わず Web Audio API でその場で作曲・合成する
-import { hashStr, seeded } from './util.js?v=38';
+import { hashStr, seeded } from './util.js?v=39';
 
 const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 const MINOR = [0, 2, 3, 5, 7, 8, 10];
@@ -13,6 +13,11 @@ const MIXO = [0, 2, 4, 5, 7, 9, 10];
 // 曲調: scale / root(MIDI) / テンポ / A・B のコード進行(度数) / 楽器 / swing=はね / wet=残響 / seven=7thコード / amb=環境音
 export const MOODS = {
   space: { name: '星の海', scale: LYDIAN, root: 50, bpm: 60, prog: [0, 4, 5, 3], progB: [5, 3, 0, 4], lead: 'bell', sub: 'harp', density: 0.22, pad: 'soft', bass: 'drone', drums: null, delay: 0.5, wet: 0.75, seven: true, amb: 'space' },
+  // 世界団ごとの宇宙の曲: 䥚=はじまり / 壞=崩壊 / 𢜤=愛 / 𡻦=もしも
+  danSho: { name: 'はじまりの星々', scale: MAJOR, root: 55, bpm: 74, prog: [0, 3, 5, 4], progB: [3, 4, 2, 5], lead: 'piano', sub: 'flute', density: 0.3, pad: 'warm', bass: 'drone', drums: null, delay: 0.42, wet: 0.65, seven: true, amb: 'space' },
+  danKai: { name: '崩れゆく星', scale: PHRYGIAN, root: 45, bpm: 84, prog: [0, 1, 5, 6], progB: [3, 1, 6, 0], lead: 'choirlead', sub: 'square', density: 0.34, pad: 'dark', bass: 'drone', drums: 'slow', arp: true, delay: 0.4, wet: 0.6, amb: 'hum' },
+  danAi: { name: '愛の星雲', scale: MAJOR, root: 60, bpm: 86, prog: [0, 2, 3, 4], progB: [5, 1, 3, 4], lead: 'musicbox', sub: 'harp', density: 0.42, pad: 'warm', bass: 'root', drums: 'soft', swing: 0.22, delay: 0.32, wet: 0.5, seven: true, amb: 'space' },
+  danMoshi: { name: 'もしもの星', scale: DORIAN, root: 50, bpm: 68, prog: [0, 3, 6, 2], progB: [4, 6, 3, 0], lead: 'koto', sub: 'bell', density: 0.32, pad: 'soft', bass: 'drone', drums: 'hand', delay: 0.5, wet: 0.65, seven: true, amb: 'space' },
   calm: { name: 'のどかな日常', scale: MAJOR, root: 60, bpm: 98, prog: [0, 5, 3, 4], progB: [3, 4, 2, 5], lead: 'piano', sub: 'flute', density: 0.55, pad: 'warm', bass: 'root', drums: 'soft', swing: 0.12, delay: 0.2, wet: 0.3, seven: true, amb: 'town' },
   cute: { name: 'あまいメロディ', scale: MAJOR, root: 65, bpm: 118, prog: [0, 3, 4, 0], progB: [5, 1, 4, 4], lead: 'musicbox', sub: 'pluck', density: 0.6, pad: null, bass: 'pizz', drums: 'soft', swing: 0.2, delay: 0.25, wet: 0.3, amb: 'breeze' },
   nature: { name: '森のささやき', scale: MAJOR, root: 67, bpm: 84, prog: [0, 3, 0, 4], progB: [5, 3, 1, 4], lead: 'flute', sub: 'harp', density: 0.45, pad: 'warm', bass: 'root', drums: null, delay: 0.3, wet: 0.45, seven: true, amb: 'forest' },
@@ -42,9 +47,12 @@ const BY_NAME = {
 };
 const BY_PARTICLE = { ember: 'fire', snow: 'ice', wisp: 'dark', star: 'space', bubble: 'cute', petal: 'cute', leaf: 'nature', spark: 'future', note: 'music', rain: 'ocean', dust: 'ancient', paper: 'calm', heart: 'cute', ash: 'dark' };
 export const moodOf = (w) => BY_NAME[w.name] || BY_PARTICLE[w.theme.particle] || 'calm';
+const BY_DAN = { '䥚': 'danSho', '壞': 'danKai', '𢜤': 'danAi', '𡻦': 'danMoshi' };
+// 世界団の宇宙の曲。新しい世界団が増えたら、ここに足すまでは「星の海」が流れる
+export const danMoodOf = (id) => BY_DAN[id] || 'space';
 
 // 曲ごとの音量の差をそろえる補正 (dB)
-const TRIM = { ocean: 5.5, music: 4, fire: 3.5, future: 3, cute: 2.5, battle: 3.5, spooky: 2, ancient: 0.5 };
+const TRIM = { ocean: 5.5, music: 4, fire: 3.5, future: 3, cute: 2.5, battle: 3.5, spooky: 2, ancient: 0.5, danSho: -1 };
 const freq = (m) => 440 * 2 ** ((m - 69) / 12);
 const SAVE_KEY = 'oc-multiverse-audio';
 
