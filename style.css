@@ -121,11 +121,14 @@ kbd { display: inline-block; min-width: 18px; text-align: center; padding: 0 4px
 .dan-label span { display: block; font-size: 13px; color: #cdd3ff; }
 .dan-label.hot { scale: 1.15; }
 .world-label { text-align: center; color: #fff; text-shadow: 0 1px 4px #000, 0 0 2px #000; font-size: 11px; transition: scale .15s, opacity .2s; }
-.world-label b { font-size: 13px; display: block; }
+.world-label b { font-size: 13px; display: block; transition: opacity .2s; }
+.world-label.crowded:not(.hot) b { opacity: 0; }
 .world-label small, .world-label span { display: none; color: #c8ceff; font-size: 11px; }
 .world-label.hot { scale: 1.25; z-index: 5; background: rgba(10, 12, 30, .8); padding: 4px 10px; border-radius: 10px; }
 .world-label.hot small, .world-label.hot span { display: block; }
-.letter-label { font-size: 60px; font-weight: 800; color: rgba(160, 180, 255, .16); transition: opacity .2s; }
+.letter-label { font-size: 60px; font-weight: 800; color: rgba(160, 180, 255, .16); transition: opacity .2s, color .2s; }
+.letter-label.solo:not(.strong) { opacity: 0; }
+.letter-label.strong { font-size: 44px; color: var(--c); text-shadow: 0 0 12px rgba(0, 0, 0, .9), 0 2px 4px #000; }
 /* 他の世界線の地面に重なっている文字 */
 .on-ground:not(.hot) { opacity: 0; }
 .portal-label { background: rgba(10, 12, 30, .75); color: #fff; padding: 3px 10px; border-radius: 999px; font-size: 13px; border: 1px solid rgba(255,255,255,.25); }
@@ -369,10 +372,10 @@ body.mobile .paper .nums span { font-size: 9px; }
 body.mobile .dan-label b { font-size: 28px; }
 body.mobile .dan-label small { font-size: 11px; }
 body.mobile .dan-label span, body.mobile .route-label { display: none; }
-body.mobile .letter-label { font-size: 36px; }
+body.mobile .letter-label { font-size: 26px; }
 body.mobile .mon-label { display: none; }
 body.mobile .travel-label { font-size: 10px; }
-body.mobile .travel-label small { font-size: 9px; }
+body.mobile .travel-label small { display: none; }
 /* 横持ち: シートは右から出して、3Dを広く見せる */
 @media (orientation: landscape) and (max-height: 500px) {
   body.mobile { --tab: calc(40px + env(safe-area-inset-bottom)); }

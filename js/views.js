@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=40';
-import { TYPE_COLOR } from './types.js?v=40';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=40';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=41';
+import { TYPE_COLOR } from './types.js?v=41';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=41';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -13,8 +13,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=40';
-import { CATS } from './sim.js?v=40';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=41';
+import { CATS } from './sim.js?v=41';
 
 // グラフィック設定 (低・中・高・超高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -71,6 +71,8 @@ const sleepTint = (c) => (c.state === 'down' ? '#8a8a8a' : c.state === 'sleep' |
 
 // カメラの移動がこれより遠いと、宇宙から観戦中はワープを見せる
 const WARP_DIST = 180;
+// 世界線の名前の大きさの目安 (ピクセル)
+const NAME_W = 62, NAME_H = 20;
 
 // ---------- 共通の土台 ----------
 class BaseView {
@@ -607,16 +609,30 @@ export class ClusterView extends BaseView {
     for (const wid of dan.worlds) {
       const w = model.worlds.get(wid);
       if (!groups.has(w.letter)) groups.set(w.letter, []);
-      groups.get(w.letter).push(w.pos);
+      groups.get(w.letter).push(this.nodes.get(wid));
     }
-    for (const [letter, ps] of groups) {
-      if (ps.length < 2) continue;
+    [...groups].forEach(([letter, ns], i) => {
+      const ps = ns.map((n) => n.w.pos);
       const c = ps.reduce((a, p) => ({ x: a.x + p.x / ps.length, y: a.y + p.y / ps.length, z: a.z + p.z / ps.length }), { x: 0, y: 0, z: 0 });
+      const col = `hsl(${Math.round((i / groups.size) * 360)}, 85%, 72%)`;
       const lb = label(escapeHtml(letter), 'letter-label');
-      lb.position.set(c.x, c.y - 10, c.z);
+      lb.inner.style.setProperty('--c', col);
+      lb.inner.classList.toggle('solo', ns.length < 2);
+      // 1つだけの世界線は名前の代わりに同じ場所へ、まとまりは真ん中に置く
+      if (ns.length < 2) lb.position.set(c.x, c.y + ns[0].r * 1.5 + 1, c.z);
+      else lb.position.set(c.x, c.y - 10, c.z);
       this.scene.add(lb);
+      lb.nodes = ns;
+      if (ns.length > 1) {
+        // 同じ英字の世界線を囲む輪
+        const R = Math.max(...ns.map((n) => Math.hypot(n.w.pos.x - c.x, n.w.pos.z - c.z) + n.r * 1.5)) + 8;
+        const pts = Array.from({ length: 64 }, (_, k) => new THREE.Vector3(c.x + Math.cos((k / 64) * Math.PI * 2) * R, c.y, c.z + Math.sin((k / 64) * Math.PI * 2) * R));
+        lb.ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: new THREE.Color(col), transparent: true, opacity: 0.55 }));
+        lb.ring.visible = false;
+        this.scene.add(lb.ring);
+      }
       this.letters.push(lb);
-    }
+    });
 
     const hue = new THREE.Color(dan.color);
     this.spaceBackdrop('dan:' + danId, ['#070a1e', hue.clone().multiplyScalar(0.4).getStyle(), '#6a2a8a'], starfield(3000, Math.max(900, maxR * 5)));
@@ -682,6 +698,7 @@ export class ClusterView extends BaseView {
     this.frameShot(dt);
     super.update(dt);
     this.stageCamera(dt);
+    this.updateCrowd(dt);
     if (this.ultra) this.hideLabelsOnGround(dt);
     if ((this.refreshT -= dt) < 0) { this.refresh(); this.refreshT = 0.5; }
     for (const n of this.nodes.values()) n.g.rotation.y += dt * (this.ultra ? 0.05 : 0.2);
@@ -749,6 +766,33 @@ export class ClusterView extends BaseView {
     const n = this.watch && this.nodes.get(this.watch.world);
     return n ? n.mini.localToWorld(new THREE.Vector3(this.watch.x, 0, this.watch.z)) : null;
   }
+  // 名前どうしが画面で重なる世界線は名前を隠し、英字のまとまりを目立たせる。近づくと余裕のできた世界線から名前が出る
+  updateCrowd(dt) {
+    if ((this.crowdT = (this.crowdT ?? 0) - dt) > 0) return;
+    this.crowdT = 0.12;
+    const W = innerWidth, H = innerHeight, cam = this.camera;
+    const seen = [];
+    for (const n of this.nodes.values()) {
+      const v = n.g.position.clone().project(cam);
+      if (v.z < 1) seen.push({ n, x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H, d: cam.position.distanceTo(n.g.position) });
+    }
+    // 映している世界線の名前は、混んでいても隠さない
+    const mine = new Set(this.focusList().map((f) => f.p));
+    for (const a of seen) {
+      // 同じくらいの距離どうしは両方隠す。ずっと奥の世界線は、手前の世界線の名前を消さない
+      let room = Infinity;
+      for (const b of seen) if (a !== b && b.d < a.d * 1.15) room = Math.min(room, Math.max(Math.abs(a.x - b.x) / NAME_W, Math.abs(a.y - b.y) / NAME_H));
+      const crowded = !mine.has(a.n.g.position) && room < (a.n.crowded ? 1.25 : 1); // 境目で点滅しないよう、出す時は少し余裕を見る
+      if (crowded !== a.n.crowded) { a.n.crowded = crowded; a.n.lb.inner.classList.toggle('crowded', crowded); }
+    }
+    for (const lb of this.letters) {
+      const strong = lb.nodes.filter((n) => n.crowded).length * 2 >= lb.nodes.length;
+      if (strong === lb.strong) continue;
+      lb.strong = strong;
+      lb.inner.classList.toggle('strong', strong);
+      if (lb.ring) lb.ring.visible = strong;
+    }
+  }
   // 島の地面に重なる他の世界線の文字を隠す
   hideLabelsOnGround(dt) {
     if ((this.groundT = (this.groundT ?? 0) - dt) > 0) return;
@@ -790,7 +834,7 @@ export class ClusterView extends BaseView {
     for (const lb of this.letters) {
       const q = screen(lb.position);
       if (q) q.y -= 35;
-      mark(lb, onGround(q, null, 25, 30));
+      mark(lb, onGround(q, lb.nodes.length < 2 ? lb.nodes[0] : null, 25, 30));
     }
   }
   // 今映している世界線
