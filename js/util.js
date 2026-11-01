@@ -80,7 +80,7 @@ export function fmtTime(t) {
   return { day, date: `${mo}/${d}`, hh, mm, text: `${mo}/${d} ${hh}:${mm}` };
 }
 
-export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif';
+export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "OC Jigmo", sans-serif';
 
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

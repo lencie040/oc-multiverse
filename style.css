@@ -5,7 +5,7 @@
   --text: #eef0ff;
   --muted: #9aa3c8;
   --accent: #ffe14a;
-  --font: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  --font: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "OC Jigmo", sans-serif;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
@@ -196,7 +196,7 @@ body.nopanels #events, body.nopanels #info { display: none; }
 #caption { position: fixed; bottom: 58px; left: 50%; transform: translateX(-50%); z-index: 11; background: rgba(16, 20, 40, .9); border: 1px solid #ff5a8a; color: #fff; padding: 8px 18px; border-radius: 999px; font-size: 14px; max-width: 70vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #news { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .55); display: grid; place-items: center; }
 #news[hidden] { display: none; }
-.paper { width: min(620px, 92vw); max-height: 86vh; overflow-y: auto; background: #f7f0de; color: #2a2620; border-radius: 6px; padding: 22px 26px; box-shadow: 0 20px 60px rgba(0,0,0,.5); font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; position: relative; }
+.paper { width: min(620px, 92vw); max-height: 86vh; overflow-y: auto; background: #f7f0de; color: #2a2620; border-radius: 6px; padding: 22px 26px; box-shadow: 0 20px 60px rgba(0,0,0,.5); font-family: "Hiragino Mincho ProN", "Yu Mincho", "OC Jigmo", serif; position: relative; }
 .paper .mast { text-align: center; border-bottom: 3px double #2a2620; padding-bottom: 8px; margin-bottom: 12px; }
 .paper .mast h1 { margin: 0; font-size: 30px; letter-spacing: .2em; }
 .paper .mast small { font-family: var(--font); color: #6a6050; }

@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=39';
-import { Sim } from './sim.js?v=39';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=39';
-import { UI } from './ui.js?v=39';
-import { Director } from './director.js?v=39';
-import { Sound, moodOf, danMoodOf } from './audio.js?v=39';
-import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=39';
-import { Sync } from './sync.js?v=39';
-import { PostFX } from './fx.js?v=39';
+import { buildModel } from './model.js?v=40';
+import { Sim } from './sim.js?v=40';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=40';
+import { UI } from './ui.js?v=40';
+import { Director } from './director.js?v=40';
+import { Sound, moodOf, danMoodOf } from './audio.js?v=40';
+import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=40';
+import { Sync } from './sync.js?v=40';
+import { PostFX } from './fx.js?v=40';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -27,8 +27,10 @@ const NEAR_TAP = [[0, -22], [0, 22], [-22, 0], [22, 0], [-16, -16], [16, -16], [
 
 class App {
   async init() {
-    await Promise.race([document.fonts.load('800 40px "M PLUS Rounded 1c"'), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=39').then((r) => r.json());
+    // キャラの漢字のコマは文字を絵にするので、先に読み込んでおく (珍しい漢字は同梱のフォント)
+    const rare = fetch('fonts/chars.json').then((r) => r.json()).then((t) => document.fonts.load('40px "OC Jigmo"', t));
+    await Promise.race([Promise.all([document.fonts.load('800 40px "M PLUS Rounded 1c"'), rare]), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
+    const raw = await fetch('data/data.json?v=40').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む

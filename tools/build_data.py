@@ -5,6 +5,7 @@
   python3 tools/build_data.py [イラストフォルダ]
 """
 import csv, io, json, os, re, shutil, sys, urllib.request
+from build_font import main as build_font
 
 SHEET = "1v2nMhZftw4EIEVcpOMluSK8nlz62roy7OMkh23AyvE4"
 CHAR_GID, MAP_GID, TYPE_GID = "0", "1517354738", "1535860723"
@@ -112,6 +113,7 @@ def main():
     with open(os.path.join(ROOT, "data", "data.json"), "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     print(f"worlds={len(worlds)} chars={len(chars)} images={sum(1 for c in chars if c['img'])} dans={out['dans']}")
+    build_font()
 
 
 if __name__ == "__main__":

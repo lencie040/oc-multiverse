@@ -103,6 +103,10 @@ python3 tools/build_data.py "/path/to/illust"
 
 コードを変えて公開するときは、ブラウザのキャッシュ対策に `python3 tools/bump_version.py <番号>` で読み込み番号を上げてください。
 
+### 珍しい漢字のフォント
+
+スマホに入っていない珍しい漢字（JIS 第1・第2水準の外の字）は、[Jigmo](https://kamichikoichi.github.io/jigmo/)（CC0）から必要な字だけを抜き出して `fonts/` に同梱しています。`tools/build_data.py` の最後に `tools/build_font.py` が動き、シートに新しい字が増えると自動で追加されます。これには PC に Jigmo が入っていることと、`pip install fonttools` が必要です。
+
 ## ローカルで動かす
 
 ```bash
