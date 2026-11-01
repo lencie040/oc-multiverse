@@ -1,10 +1,10 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=44';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=44';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=44';
-import { loadBattleData } from './battle.js?v=44';
-import { RPG } from './rpg.js?v=44';
-import { Control } from './control.js?v=44';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=45';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=45';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=45';
+import { loadBattleData } from './battle.js?v=45';
+import { RPG } from './rpg.js?v=45';
+import { Control } from './control.js?v=45';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -65,7 +65,7 @@ const EMOTES = {
 const FRIEND = 10, BEST = 25; // 友達・親友になる友好度 // 1ゲーム分あたりの出現率 (昼のみ)
 
 // 保存・同期するキャラの項目 (同期では吹き出しと絵文字も送る)
-const SAVE_KEYS = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins', 'lv', 'exp', 'coins', 'items', 'held', 'food', 'hungry', 'orders', 'ability', 'ctrl', 'starveDay', 'sleptKey', 'flags'];
+const SAVE_KEYS = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins', 'lv', 'exp', 'coins', 'items', 'held', 'food', 'hungry', 'orders', 'ability', 'ctrl', 'starveDay', 'sleptKey', 'flags', 'downUntil'];
 const SYNC_KEYS = [...SAVE_KEYS, 'bubble', 'emote'];
 // 普段の行動の長さ (現実の時間で、ずっと同じことをして見えないよう短めにする)
 const ACT_SCALE = 0.15;
@@ -141,7 +141,7 @@ export class Sim {
       bubble: null, kills: 0, downs: 0, travels: 0, log: [],
       trainDay: -1, treasures: 0, raidWins: 0, transit: null, friends: {}, emote: null,
       bdayParty: -1, contestWins: 0,
-      lv: 1, exp: 0, coins: 100, items: {}, held: null, food: 7, hungry: 0, orders: [], ability: null, ctrl: null, starveDay: null, sleptKey: -1, flags: {},
+      lv: 1, exp: 0, coins: 100, items: {}, held: null, food: 7, hungry: 0, orders: [], ability: null, ctrl: null, starveDay: null, sleptKey: -1, flags: {}, downUntil: null,
     });
     c.types = splitTypes(c.type);
     const bd = /(\d+)月(\d+)日/.exec(c.birthday || '');
@@ -318,7 +318,7 @@ export class Sim {
       c.pts = Math.min(this.ptCap(c), c.pts + this.ptRate(c));
       this.morningFood(c);
       this.morningSleep(c);
-      if (c.state === 'down' && !c.transit && c.starveDay == null) {
+      if (c.state === 'down' && !c.transit && c.starveDay == null && c.downUntil == null) {
         c.state = 'ok';
         c.act = { cat: 'daily', label: '目を覚ました', until: this.t + rand(5, 30), kind: 'idle' };
       }
@@ -335,7 +335,7 @@ export class Sim {
     this.checkOrders(c);
     if (c.transit) return this.stepTransit(c);
     if (c.bubble && this.t > c.bubble.until) c.bubble = null;
-    if (c.state === 'down') return;
+    if (c.state === 'down') { if (c.downUntil != null && this.t >= c.downUntil) this.recover(c); return; }
     if (c.partyLeader) return this.followLeader(c, dt);
     if (c.act.kind === 'defend') return this.defendStep(c, dt);
     if (c.walking) {
@@ -393,6 +393,7 @@ export class Sim {
     if (tr?.downed) return { cat: 'battle', icon: '💫', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」の間の宇宙で倒れている` };
     if (tr) return { cat: 'move', icon: tr.kind === 'dan' ? '🌌' : '🌀', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」へ移動中（あと${Math.max(1, Math.ceil(tr.end - (tr.pausedAt ?? this.t)))}分）` };
     if (c.starveDay != null) return { cat: 'daily', icon: '🍽️', text: `空腹で倒れている（${c.starveDay - this.day}日後の朝まで）` };
+    if (c.downUntil != null) return { cat: 'battle', icon: '💫', text: `やられて動けない（あと${Math.max(1, Math.ceil(c.downUntil - this.t))}分）` };
     if (c.state === 'down') return { cat: 'battle', icon: '💫', text: '倒れている（朝まで動けない）' };
     if (c.state === 'camp') return { cat: 'daily', icon: '⛺', text: '野宿中（すやすや）' };
     if (c.state === 'sleep') return { cat: 'daily', icon: '💤', text: '寝ている' };
@@ -1229,8 +1230,8 @@ export class Sim {
     }
   }
   knockDown(p) {
-    // 操作中のキャラは、朝まで待たずに家へ戻される
-    if (p.ctrl) { p.downs++; return this.sendHome(p, `${p.name}はやられて家に戻された`); }
+    // 操作中のキャラは、朝まで待たずに家へ戻され、少しの間だけ動けなくなる
+    if (p.ctrl) return this.playerDown(p);
     p.state = 'down';
     p.walking = false;
     p.downs++;

@@ -1,14 +1,15 @@
 // キャラ操作: 見ている人からの命令を受けて、そのキャラを動かす (Sim に足すメソッド)
 // 命令はホストだけが実行する。結果は普段の同期で全員に届く
-import { rand, randInt, pick, dist2, hashStr } from './util.js?v=44';
-import { randomTown, powerAt } from './model.js?v=44';
-import { monsterType } from './types.js?v=44';
-import { makeUnit, autoBattle } from './battle.js?v=44';
-import { ITEMS } from './items.js?v=44';
-import { CTRL_EXPIRE } from './rpg.js?v=44';
+import { rand, randInt, pick, dist2, hashStr } from './util.js?v=45';
+import { randomTown, powerAt } from './model.js?v=45';
+import { monsterType } from './types.js?v=45';
+import { makeUnit, autoBattle } from './battle.js?v=45';
+import { ITEMS } from './items.js?v=45';
+import { CTRL_EXPIRE } from './rpg.js?v=45';
 
 // 操作して何かをやり遂げた時のコイン (難しいことほど多い)
 const ACT_COINS = { work: 30, training: 20, explore: 25, help: 20, social: 8, hobby: 6, sabori: 2, daily: 3 };
+const DOWN_MIN = 3; // 操作中のキャラがやられた時に動けない長さ (分)
 const OWN = ['ゴロゴロする', 'スマホをいじる', 'ぼーっとする', 'お菓子をつまむ', 'テレビを眺める'];
 
 export const ownerHash = (token) => 'p' + hashStr('player:' + token).toString(36);
@@ -22,6 +23,21 @@ export const Control = {
     const due = this.pending.filter((p) => this.t >= p.at);
     this.pending = this.pending.filter((p) => this.t < p.at);
     for (const p of due) p.fn();
+  },
+  playerDown(c) {
+    c.downs++;
+    this.sendHome(c, `${c.name}はやられて家に戻された（${DOWN_MIN}分間動けない）`);
+    c.state = 'down';
+    c.downUntil = this.t + DOWN_MIN;
+    c.bubble = null;
+    c.act = { cat: 'battle', label: '倒れている', until: Infinity, kind: 'idle' };
+  },
+  recover(c) {
+    c.downUntil = null;
+    if (c.starveDay != null) return; // 空腹で倒れている時は、そちらの朝まで
+    c.state = 'ok';
+    c.act = { cat: 'daily', label: '待機中', until: this.playerHolds(c) ? Infinity : this.t, kind: 'idle' };
+    this.notify(c, '動けるようになった');
   },
   // 操作した人に結果の一言を返す
   notify(c, text) { if (c.ctrl) c.ctrl.msg = { n: (c.ctrl.msg?.n || 0) + 1, text }; },
@@ -131,11 +147,11 @@ export const Control = {
       case 'auto': c.ctrl.auto = !!a.on; if (a.on) c.ctrl.home = false; c.act.until = Math.min(c.act.until, this.t); return null;
       case 'home': c.ctrl.home = !!a.on; if (a.on) c.ctrl.auto = false; if (!c.transit) c.act.until = Math.min(c.act.until, this.t); return null;
       case 'ability': return this.setAbility(c, a.i);
-      case 'buy': return c.transit ? '移動中は買えない' : this.buy(c, a.id, a.n || 1);
-      case 'sell': return c.transit ? '移動中は売れない' : this.sell(c, a.id, a.n || 1);
+      case 'buy': return c.transit ? '移動中は買えない' : c.state === 'down' ? '倒れていて動けない' : this.buy(c, a.id, a.n || 1);
+      case 'sell': return c.transit ? '移動中は売れない' : c.state === 'down' ? '倒れていて動けない' : this.sell(c, a.id, a.n || 1);
       case 'order': return this.order(c, a.id, a.n || 1);
       case 'use': return this.useField(c, a.id);
-      case 'give': return this.give(c, a);
+      case 'give': return c.state === 'down' ? '倒れていて動けない' : this.give(c, a);
       case 'sos': return c.transit?.downed ? (this.sendSOS(c), null) : '倒れていない';
       case 'move': case 'bitem': case 'run': return this.battleCommand(c, op, a);
       case 'wake':
