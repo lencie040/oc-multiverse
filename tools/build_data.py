@@ -8,7 +8,7 @@ import csv, io, json, os, re, shutil, sys, urllib.request
 from build_font import main as build_font
 
 SHEET = "1v2nMhZftw4EIEVcpOMluSK8nlz62roy7OMkh23AyvE4"
-CHAR_GID, MAP_GID, TYPE_GID = "0", "1517354738", "1535860723"
+CHAR_GID, MAP_GID, TYPE_GID, MOVE_GID = "0", "1517354738", "1535860723", "1603752564"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ILLUST = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "..", "illust")
 
@@ -34,6 +34,22 @@ def type_chart():
                 m[d] = float(v)
         chart[r[0].strip()] = m
     return {"types": defs, "chart": chart}
+
+
+def moves():
+    """オリジナル技の一覧"""
+    rows = fetch(MOVE_GID)
+    head = [x.strip() for x in rows[0]]
+    out = []
+    for r in rows[1:]:
+        o = dict(zip(head, [x.strip() for x in r]))
+        if not o.get("技名"):
+            continue
+        out.append({"name": o["技名"], "type": o["タイプ"], "cat": o["分類"], "contact": o["接触"] == "YES", "power": o["威力"],
+                    "acc": o["命中"], "pp": o["PP"], "range": o["範囲"], "pri": o["優先度"],
+                    "cond": "／".join(x for x in (o["条件"], o["条件2"], o["条件3"]) if x),
+                    "eff": o["追加効果"], "desc": o["説明"], "sig": o["誰かの専用技"] == "YES"})
+    return out
 
 
 # キャラがいない等でシートから世界団を決められない世界線の指定
@@ -91,7 +107,8 @@ def main():
             "rank": int(rank.group()) if rank else 1, "kanji": r[15][:1] or r[0][:1],
             "colors": [c for c in r[12:15] if c], "stats": [num(v) for v in r[16:22]],
             "type": r[28], "zoku": r[33] if r[33] != "-" else "", "seiryoku": r[34] if r[34] != "-" else "",
-            "birthday": r[11], "img": img,
+            "birthday": r[11], "img": img, "cost": float(r[29] or 0),
+            "abilities": [r[35].strip(), r[36].strip(), r[37].strip()], "sigs": [x.strip() for x in r[39:42] if x.strip()],
         })
 
     suffix_dan = {"ex": "壞", "if": "𡻦", "sp": "𢜤"}
@@ -109,6 +126,7 @@ def main():
         "worlds": list(worlds.values()),
         "chars": chars,
         "types": type_chart(),
+        "moves": moves(),
     }
     with open(os.path.join(ROOT, "data", "data.json"), "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))

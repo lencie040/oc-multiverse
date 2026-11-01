@@ -14,6 +14,9 @@ export const TYPE_COLOR = {
   妖: '#d86ad8', 食: '#e89a4a', 古: '#8a7a5a', 虚: '#6a6a8a', 埃: '#a89a8a', 賢: '#4a8ac8', 虹: '#e86a9a', 反: '#5ac8a8', 月: '#c8b8f0',
 };
 
+// タイプ1つどうしの倍率 (戦闘の計算用)
+export const typeMult = (a, d) => CHART[a]?.[d] ?? 1;
+
 export function splitTypes(s) { return s ? s.split(/[／/・]/).map((x) => x.trim()).filter(Boolean) : []; }
 
 // 攻撃の通りやすさ: 攻撃側は一番効くタイプで攻め、防御側の複合タイプは掛け合わせる

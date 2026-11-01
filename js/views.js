@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=41';
-import { TYPE_COLOR } from './types.js?v=41';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=41';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=42';
+import { TYPE_COLOR } from './types.js?v=42';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=42';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -13,8 +13,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=41';
-import { CATS } from './sim.js?v=41';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=42';
+import { CATS } from './sim.js?v=42';
 
 // グラフィック設定 (低・中・高・超高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -216,8 +216,11 @@ class BaseView {
       tk.sp.scale.set(H * (tk.tex.ready && c.img ? tk.tex.aspect : 1), H, 1);
       tk.glowSp.scale.setScalar(H * 2.2);
       tk.lb.position.y = H * 0.75;
-      const left = Math.max(1, Math.ceil(tr.end - sim.t));
-      const html = `${tr.kind === 'dan' ? '🌌' : '🌀'} ${escapeHtml(c.name)}${c.party.length ? ` +${c.party.length}` : ''}<small>→ ${escapeHtml(sim.wname(tr.to))}（あと${left}分）</small>`;
+      const left = Math.max(1, Math.ceil(tr.end - (tr.pausedAt ?? sim.t)));
+      const fight = sim.fightOf(c.id), me = fight && sim.fightBars(fight).find((b) => b.id === c.id);
+      const bar = me ? `<span class="hpbar"><i style="width:${Math.max(0, me.pct)}%"></i></span>` : '';
+      const state = tr.downed ? `💫 倒れている${tr.downed.sos ? '（🆘 救難信号）' : ''}` : fight ? '⚔️ 魔物と戦闘中' : `→ ${escapeHtml(sim.wname(tr.to))}（あと${left}分）`;
+      const html = `${tr.kind === 'dan' ? '🌌' : '🌀'} ${escapeHtml(c.name)}${c.party.length ? ` +${c.party.length}` : ''}<small>${state}</small>${bar}`;
       if (html !== tk.last) { tk.lb.inner.innerHTML = html; tk.last = html; }
     }
     for (const [id, tk] of this.tokens) {
@@ -1330,6 +1333,20 @@ export class WorldView extends BaseView {
       this.scene.add(pg);
     }
 
+    // 世界線の果て: ここからだけ世界団を移動できる
+    if (geo.edge) {
+      const pg = buildPortal('#7a3aff');
+      pg.position.set(geo.edge.x, 0, geo.edge.z);
+      pg.rotation.y = Math.atan2(-geo.edge.x, -geo.edge.z);
+      pg.scale.setScalar(1.5);
+      const lb = label('🌌 世界線の果て', 'portal-label');
+      lb.position.set(0, 7.6, 0);
+      pg.add(lb);
+      this.portalLabels.push(lb);
+      this.animated.push(pg);
+      this.scene.add(pg);
+    }
+
     // パーティクル
     const pt = PARTICLES[th.particle];
     if (pt) {
@@ -1347,6 +1364,7 @@ export class WorldView extends BaseView {
     }
 
     this.charObjs = new Map();
+    this.hpBars = new Map();
     this.floats = [];
     this.monObjs = new Map();
     this.raidObjs = new Map();
@@ -1424,6 +1442,52 @@ export class WorldView extends BaseView {
     this.scene.add(g);
     this.pickables.push(g);
     return g;
+  }
+
+  // 戦っている人の頭上のHPバー。減った時はダメージの火花も出す
+  updateHpBars() {
+    const { sim } = this.app;
+    const seen = new Set();
+    for (const f of sim.fights) {
+      if (f.world !== this.worldId) continue;
+      for (const b of sim.fightBars(f)) {
+        const o = this.charObjs.get(b.id) ?? (b.side ? this.monObjs.get(f.mon) ?? this.raidObjs.get(f.raid) : null);
+        if (!o) continue;
+        const key = b.side ? 'f' + f.id : b.id;
+        seen.add(key);
+        let lb = this.hpBars.get(key);
+        if (!lb) {
+          lb = label('<div class="hpbar"><i></i></div>', 'hplabel');
+          lb.position.y = 3.6;
+          lb.pct = 100;
+          o.add(lb);
+          lb.owner = o;
+          this.hpBars.set(key, lb);
+        }
+        if (Math.abs(lb.pct - b.pct) >= 1) {
+          if (b.pct < lb.pct) {
+            this.floatText(o, `💥${Math.round(lb.pct - b.pct)}%`, 2.6, 'hit');
+            this.bursts.burst(o.position.x, 1.4, o.position.z, { n: 9, speed: 8, colors: ['#ffd27a', '#ff7a3a'], size: 0.32, life: 0.4, g: 5, hdr: 2.2 });
+          }
+          lb.pct = b.pct;
+          const bar = lb.inner.querySelector('i');
+          bar.style.width = `${Math.max(0, b.pct)}%`;
+          bar.style.background = b.pct > 50 ? '#5ad07a' : b.pct > 20 ? '#ffd24a' : '#ff5a5a';
+        }
+      }
+    }
+    for (const [key, lb] of this.hpBars) {
+      if (seen.has(key)) continue;
+      if (lb.element.parentNode) lb.element.parentNode.removeChild(lb.element);
+      lb.owner.remove(lb);
+      this.hpBars.delete(key);
+    }
+  }
+  // タップした地面の位置
+  groundPoint(ndc) {
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const p = this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+    return p && Math.hypot(p.x, p.z) <= this.world.geo.R ? { x: p.x, z: p.z } : null;
   }
 
   removeObj(map, id) {
@@ -1567,13 +1631,6 @@ export class WorldView extends BaseView {
         u.emoteN = c.emote.n;
         if (camD < 140) this.floatText(o, c.emote.e, H + 1.4, 'emote');
       }
-      const raidFight = c.act.kind === 'raid' && !c.walking && sim.raids.some((r) => r.id === c.act.data && r.phase === 'fight');
-      const fighting = c.act.kind === 'fight' || raidFight || (c.act.kind === 'defend' && c.act.fightUntil);
-      if (fighting && camD < 140 && (u.hitT -= dt) < 0) {
-        u.hitT = 0.45 + Math.random() * 0.5;
-        this.floatText(o, `💥${Math.round(30 + Math.random() * (raidFight ? 900 : 300))}`, H * 0.8, 'hit');
-        this.bursts.burst(o.position.x, H * 0.6, o.position.z, { n: 9, speed: 8, colors: ['#ffd27a', '#ff7a3a'], size: 0.32, life: 0.4, g: 5, hdr: 2.2 });
-      }
       // テント
       if (c.state === 'camp' && !c.partyLeader) {
         if (!this.tents.has(c.id)) {
@@ -1585,6 +1642,7 @@ export class WorldView extends BaseView {
       } else if (this.tents.has(c.id)) { this.scene.remove(this.tents.get(c.id)); this.tents.delete(c.id); }
     }
     for (const id of [...this.charObjs.keys()]) if (!here.has(id)) this.removeObj(this.charObjs, id);
+    this.updateHpBars();
     for (const id of [...this.tents.keys()]) if (!here.has(id)) { this.scene.remove(this.tents.get(id)); this.tents.delete(id); }
 
     this.floats = this.floats.filter((f) => {
@@ -1612,7 +1670,7 @@ export class WorldView extends BaseView {
       if (!o) {
         o = buildMonster(m.boss, TYPE_COLOR[m.type?.[0]]);
         o.position.set(m.x, 0, m.z);
-        const lb = label(`${m.type?.[0] ? m.type[0] + 'の' : ''}${m.horde ? '大群' : m.boss ? '大魔物' : '魔物'} ${m.power}`, 'mon-label');
+        const lb = label(`${m.type?.[0] ? m.type[0] + 'の' : ''}${m.horde ? '大群' : m.boss ? '大魔物' : '魔物'} Lv${m.lv}`, 'mon-label');
         lb.position.y = m.boss ? 2.4 : 2.8;
         o.add(lb);
         o.userData.lb = lb;

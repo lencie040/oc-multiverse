@@ -1,3 +1,3 @@
 /* tools/build_font.py が作るファイル。手で書き換えない */
-@font-face { font-family: "OC Jigmo"; src: url(jigmo-1-490927c7.woff) format("woff"); font-display: swap; unicode-range: U+47D6,U+495A,U+4E2B,U+529C,U+78B0,U+8428,U+85A5,U+91AC,U+9C53,U+9D22,U+9D42; }
-@font-face { font-family: "OC Jigmo"; src: url(jigmo-2-6396c87a.woff) format("woff"); font-display: swap; unicode-range: U+21EE6,U+22724,U+29E49; }
+@font-face { font-family: "OC Jigmo"; src: url(jigmo-1-4efcd90b.woff) format("woff"); font-display: swap; unicode-range: U+47D6,U+495A,U+4E28,U+4E2B,U+4E37,U+4EE2,U+529C,U+706C,U+718C,U+78B0,U+8428,U+85A5,U+91AC,U+9C53,U+9D22,U+9D42; }
+@font-face { font-family: "OC Jigmo"; src: url(jigmo-2-1f90731e.woff) format("woff"); font-display: swap; unicode-range: U+200CC,U+200CD,U+21EE6,U+22724,U+29E49; }

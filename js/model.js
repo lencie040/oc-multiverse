@@ -1,16 +1,17 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=41';
-import { themeOf } from './themes.js?v=41';
+import { seeded, hashStr } from './util.js?v=42';
+import { themeOf } from './themes.js?v=42';
 
-export const LEVEL = 50;
+export const MAX_LEVEL = 300;
 export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限
+// 世界線の果て: 世界団を移動できる場所 (世界団の id → 世界線の名前)。䥚以外はまだ仮
+export const EDGE_WORLDS = { 䥚: '憶界', 壞: '零界EX', '𢜤': '菓界SP', '𡻦': '氷界' };
 
-// Lv50 時の実数値合計 × ランク補正 = 戦闘力
-export function basePower(c) {
-  const [H, ...rest] = c.stats;
-  const hp = Math.floor(((2 * H + 31) * LEVEL) / 100) + LEVEL + 10;
-  const others = rest.reduce((s, b) => s + Math.floor(((2 * b + 31) * LEVEL) / 100) + 5, 0);
-  return Math.round((hp + others) * (1 + (c.rank - 1) * 0.12));
+// そのレベルの実数値の合計 = 戦闘力 (種族値が高いほど、レベルが高いほど強い)
+export function powerAt(stats, lv) {
+  const [H, ...rest] = stats;
+  const hp = Math.floor(((2 * H + 31) * lv) / 100) + lv + 10;
+  return rest.reduce((s, b) => s + Math.floor(((2 * b + 31) * lv) / 100) + 5, hp);
 }
 
 export const DAN_COLORS = ['#7ab8ff', '#ff7a8a', '#ffd27a', '#c8a0ff', '#7affc8'];
@@ -20,9 +21,8 @@ export function buildModel(raw) {
   for (const w of raw.worlds) {
     worlds.set(w.id, { ...w, letter: [...w.id][0].toUpperCase(), residents: [], neighbors: [], pos: { x: 0, y: 0, z: 0 } });
   }
-  const chars = raw.chars.map((c) => ({ ...c, power: 0 }));
+  const chars = raw.chars.map((c) => ({ ...c }));
   for (const c of chars) {
-    c.power = basePower(c);
     c.home = c.hani;
     worlds.get(c.hani).residents.push(c.id);
   }
@@ -33,12 +33,14 @@ export function buildModel(raw) {
 
   for (const d of dans) layoutDan(d, worlds);
   layoutDans(dans);
+  for (const d of dans) d.edge = d.worlds.find((id) => worlds.get(id).name === EDGE_WORLDS[d.id]) ?? d.worlds[0];
   for (const w of worlds.values()) {
+    w.isEdge = danById.get(w.dan)?.edge === w.id;
     w.theme = themeOf(w);
     w.danger = Math.min(w.num, MAX_DANGER);
     w.geo = buildGeo(w, worlds);
   }
-  return { worlds, chars, charById: new Map(chars.map((c) => [c.id, c])), dans, danById, types: raw.types };
+  return { worlds, chars, charById: new Map(chars.map((c) => [c.id, c])), dans, danById, types: raw.types, moves: raw.moves };
 }
 
 // 世界団の配置: しょ (シーズン1) は遠く離れた所に、シーズン2の世界団は一列に並ぶ。隣どうしだけ行き来できる
@@ -150,6 +152,15 @@ function buildGeo(w, worlds) {
     portals[id] = { x, z, a };
     taken.push({ x, z, r: 6 });
   }
+  // 世界線の果て: 島のふちの、ポータルから離れた所に置く
+  let edge = null;
+  if (w.isEdge) {
+    const free_ = (a) => Math.min(...angs.map((p) => Math.abs(Math.atan2(Math.sin(a - p.a), Math.cos(a - p.a)))), Math.PI);
+    let best = 0;
+    for (let i = 0; i < 24; i++) { const a = (i / 24) * Math.PI * 2; if (free_(a) > free_(best)) best = a; }
+    edge = { x: Math.cos(best) * R * 0.92, z: Math.sin(best) * R * 0.92 };
+    taken.push({ ...edge, r: 8 });
+  }
 
   const works = [];
   const nWorks = Math.min(6, Math.max(1, Math.ceil(n / 12)));
@@ -175,7 +186,19 @@ function buildGeo(w, worlds) {
     const pos = wild ? place(townR + 2, R * 0.97, 2.2, 20) : place(plazaR + 2, townR, 2.2, 20);
     props.push({ ...p, x: pos.x, z: pos.z, s: rng.range(0.8, 1.5) * (wild ? 1.2 : 1), rot: rng() * Math.PI * 2, seed: rng() });
   }
-  return { R, plazaR, townR, homes, works, spots, pond, portals, props };
+  return { R, plazaR, townR, homes, works, spots, pond, portals, props, edge };
+}
+
+// 世界線のつながりをたどった距離 (同じ世界団の中)。limit 歩まで
+export function worldsWithin(worlds, from, limit) {
+  const dist = new Map([[from, 0]]);
+  const q = [from];
+  while (q.length) {
+    const cur = q.shift();
+    if (dist.get(cur) >= limit) continue;
+    for (const nb of worlds.get(cur).neighbors) if (!dist.has(nb)) { dist.set(nb, dist.get(cur) + 1); q.push(nb); }
+  }
+  return dist;
 }
 
 export function randomWild(geo) {

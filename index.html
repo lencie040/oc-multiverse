@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="fonts/jigmo.css?v=41">
-  <link rel="stylesheet" href="style.css?v=41">
+  <link rel="stylesheet" href="fonts/jigmo.css?v=42">
+  <link rel="stylesheet" href="style.css?v=42">
   <script type="importmap">
     {
       "imports": {
@@ -28,6 +28,7 @@
     <button id="tg-director" class="topbtn" title="おまかせ観戦 (O)">🎬 おまかせ観戦</button>
     <button id="tg-space" class="topbtn" title="おまかせ観戦を、世界線の中に入らず宇宙（世界団マップ）から見る。グラフィック「超高」以上の時だけ" hidden>🔭 宇宙から観戦</button>
     <button id="tg-news" class="topbtn" title="日報を見る">📰 日報</button>
+    <button id="tg-play" class="topbtn" title="操作しているキャラのパネル" hidden>🎮 操作</button>
     <div id="searchbox">
       <input id="search" type="search" placeholder="世界線・キャラを検索（/）" autocomplete="off">
       <div id="results" hidden></div>
@@ -94,7 +95,11 @@
     <span id="legend"></span>
   </footer>
 
+  <section id="play" hidden></section>
+  <section id="bt" hidden></section>
+
   <nav id="tabbar">
+    <button data-sheet="play">🎮<small>操作</small></button>
     <button id="tab-director">🎬<small>おまかせ</small></button>
     <button data-sheet="events">📜<small>出来事</small></button>
     <button data-sheet="info">👤<small>情報</small></button>
@@ -110,6 +115,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=41"></script>
+  <script type="module" src="js/main.js?v=42"></script>
 </body>
 </html>

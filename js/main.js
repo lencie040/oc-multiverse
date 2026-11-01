@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=41';
-import { Sim } from './sim.js?v=41';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=41';
-import { UI } from './ui.js?v=41';
-import { Director } from './director.js?v=41';
-import { Sound, moodOf, danMoodOf } from './audio.js?v=41';
-import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=41';
-import { Sync } from './sync.js?v=41';
-import { PostFX } from './fx.js?v=41';
+import { buildModel } from './model.js?v=42';
+import { Sim } from './sim.js?v=42';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=42';
+import { UI } from './ui.js?v=42';
+import { Director } from './director.js?v=42';
+import { Play } from './play.js?v=42';
+import { Sound, moodOf, danMoodOf } from './audio.js?v=42';
+import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=42';
+import { Sync } from './sync.js?v=42';
+import { PostFX } from './fx.js?v=42';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -30,7 +31,7 @@ class App {
     // キャラの漢字のコマは文字を絵にするので、先に読み込んでおく (珍しい漢字は同梱のフォント)
     const rare = fetch('fonts/chars.json').then((r) => r.json()).then((t) => document.fonts.load('40px "OC Jigmo"', t));
     await Promise.race([Promise.all([document.fonts.load('800 40px "M PLUS Rounded 1c"'), rare]), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=41').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=42').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -69,6 +70,7 @@ class App {
 
     this.ui = new UI(this);
     this.director = new Director(this);
+    this.play = new Play(this);
     this.bindInput();
     this.route();
     addEventListener('hashchange', () => this.route(true));
@@ -258,7 +260,7 @@ class App {
       if (!tap) return;
       const hit = this.view.click(ndc(e)) || (touch && NEAR_TAP.some(([x, y]) => this.view.click(ndc({ clientX: e.clientX + x, clientY: e.clientY + y }))));
       if (hit) this.sound.play('click');
-      else this.ui.setSheet(null); // 何もない所をタップしたらシートを閉じる
+      else if (!this.play.tapGround(ndc(e))) this.ui.setSheet(null); // 何もない所をタップしたらシートを閉じる
     });
     el.addEventListener('pointercancel', (e) => { lift(e); down = null; });
     el.addEventListener('pointermove', (e) => {
@@ -326,6 +328,7 @@ class App {
     else if (gap > 0) this.sim.update(gap);
     this.view.update(dt);
     this.ui.tick(dt);
+    this.play.tick(dt);
     this.director.tick();
     this.sync.tick();
     this.updateMusic();
