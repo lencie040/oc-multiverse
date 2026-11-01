@@ -105,7 +105,8 @@ export class Sync {
   // キャラ操作の命令: ホストが実行し、結果はすぐ全員へ送る
   runCommand(tok, cid, op, a) {
     this.app.sim.command(tok, cid, op, a);
-    this.lastDelta = 0;
+    // WASD移動は細かく届くので、全員への送信は0.5秒に1回まで
+    this.lastDelta = a?.drive ? Math.min(this.lastDelta, Date.now() - DELTA_EVERY + 500) : 0;
   }
   command(tok, cid, op, a) {
     if (this.running) this.runCommand(tok, cid, op, a);

@@ -1,11 +1,11 @@
 // キャラ操作: 見ている人からの命令を受けて、そのキャラを動かす (Sim に足すメソッド)
 // 命令はホストだけが実行する。結果は普段の同期で全員に届く
-import { rand, randInt, pick, dist2, hashStr } from './util.js?v=48';
-import { randomTown, powerAt } from './model.js?v=48';
-import { monsterType } from './types.js?v=48';
-import { makeUnit, autoBattle } from './battle.js?v=48';
-import { ITEMS } from './items.js?v=48';
-import { CTRL_EXPIRE, DOWN_MIN } from './rpg.js?v=48';
+import { rand, randInt, pick, dist2, hashStr } from './util.js?v=49';
+import { randomTown, powerAt } from './model.js?v=49';
+import { monsterType } from './types.js?v=49';
+import { makeUnit, autoBattle } from './battle.js?v=49';
+import { ITEMS } from './items.js?v=49';
+import { CTRL_EXPIRE, DOWN_MIN } from './rpg.js?v=49';
 
 // 操作して何かをやり遂げた時のコイン (難しいことほど多い)
 const ACT_COINS = { training: 20, explore: 25, help: 20, social: 8, hobby: 6, sabori: 2, daily: 3 };
@@ -23,17 +23,16 @@ export const Control = {
     this.pending = this.pending.filter((p) => this.t < p.at);
     for (const p of due) p.fn();
   },
-  playerDown(c) {
+  playerDown(c, text = `${c.name}はやられて家に戻された（${DOWN_MIN}分間動けない）`) {
     c.downs++;
-    this.sendHome(c, `${c.name}はやられて家に戻された（${DOWN_MIN}分間動けない）`);
+    this.sendHome(c, text);
     c.state = 'down';
     c.downUntil = this.t + DOWN_MIN;
     c.bubble = null;
-    c.act = { cat: 'battle', label: '倒れている', until: Infinity, kind: 'idle' };
+    c.act = { cat: 'battle', label: 'やられて動けない', until: Infinity, kind: 'idle' };
   },
   recover(c) {
     c.downUntil = null;
-    if (c.starveDay != null) return; // 空腹で倒れている時は、そちらの朝まで
     c.state = 'ok';
     c.act = { cat: 'daily', label: '待機中', until: this.playerHolds(c) ? Infinity : this.t, kind: 'idle' };
     this.notify(c, '動けるようになった');
@@ -149,6 +148,7 @@ export const Control = {
     if (c.transit) return '移動中はできない';
     if (c.state === 'down') return '倒れていて動けない';
     if (['fight', 'raid', 'defend', 'portal', 'danGate'].includes(c.act.kind)) return '今は手が離せない';
+    if (c.act.kind === 'tower' && this.fightOf(c.id)) return '今は手が離せない';
     return null;
   },
   runCommand(c, op, a) {
@@ -210,6 +210,7 @@ export const Control = {
         ct.watchers.push(c.id);
         return this.setAct(c, 'event', `勢力対抗「${ct.game}」を観戦`, ct.until - this.t, { x: ct.x + 9, z: ct.z }, 'watch', ct.id, '対抗戦を見に行っている');
       }
+      case 'tower': return this.goTower(c, a.id);
       case 'camp': return this.setAct(c, 'daily', '野宿する', this.nextMorning() - this.t, { x: c.x + 1, z: c.z }, 'camp', null, '野宿の場所へ向かっている');
       case 'hop': {
         const to = a.to;

@@ -1,9 +1,10 @@
 // レベル・戦闘・宇宙の魔物・救難信号・お金と持ち物 (Sim に足すメソッド)
-import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=48';
-import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=48';
-import { splitTypes } from './types.js?v=48';
-import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=48';
-import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=48';
+import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=49';
+import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=49';
+import { splitTypes } from './types.js?v=49';
+import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=49';
+import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=49';
+import { TOP_FLOOR, towerById, floorName, floorStats, floorCoins } from './tower.js?v=49';
 
 const TURN_SEC = 0.9; // 自動の戦闘の1ターンの長さ (秒)
 const FIGHT_MIN = 2 / 60, FIGHT_MAX = 8 / 60; // 自動の戦闘の長さ (分)
@@ -132,7 +133,8 @@ export const RPG = {
   },
   updateFights() {
     if (!this.fights.length) return;
-    this.fights = this.fights.filter((f) => f.manual || this.t <= f.start + (f.sec + 1) / 60);
+    // 手動の戦闘はホストが持っているので、ホストが替わると続きがなくなる
+    this.fights = this.fights.filter((f) => (f.manual ? [...this.live.values()].some((L) => L.f === f) : this.t <= f.start + (f.sec + 1) / 60));
     for (const [id, L] of this.live) {
       if (L.done) { this.live.delete(id); continue; }
       if (this.t >= L.deadline || !this.ownerOnline(L.c)) this.manualTurn(L, null);
@@ -426,16 +428,9 @@ export const RPG = {
     const cost = onlinePrice(id, this.distFromGenzai(c.transit ? c.transit.from : c.world)) * n;
     if (c.coins < cost) return 'コインが足りない';
     c.coins -= cost;
-    c.orders.push({ id, n, at: this.t + MIN_PER_DAY });
+    this.addItem(c, id, n);
+    this.log(`📦 ${c.name}にGUDAZONから${it.name}が届いた`, c.transit ? c.home : c.world, [c.id], false);
     return null;
-  },
-  checkOrders(c) {
-    if (!c.orders.length) return;
-    for (const o of c.orders.filter((x) => this.t >= x.at)) {
-      this.addItem(c, o.id, o.n);
-      this.log(`📦 ${c.name}にGUDAZONから${ITEMS[o.id].name}が届いた`, c.transit ? c.home : c.world, [c.id], false);
-    }
-    c.orders = c.orders.filter((x) => this.t < x.at);
   },
   useField(c, id) {
     const it = ITEMS[id];
@@ -475,19 +470,59 @@ export const RPG = {
 
   // ---------- 食料 ----------
   morningFood(c) {
-    if (c.starveDay != null) {
-      if (this.day >= c.starveDay) { c.starveDay = null; c.state = 'ok'; c.food = 5; c.hungry = 0; c.act = { cat: 'daily', label: '目を覚ました', until: this.t + 10, kind: 'idle' }; this.log(`🍚 ${c.name}は空腹で倒れていたが、なんとか食べ物を見つけた`, c.world, [c.id], false); }
-      return;
-    }
-    if (c.transit?.downed) return;
+    if (c.transit?.downed || c.state === 'down') return;
     if (c.food > 0) { c.food--; c.hungry = 0; return; }
     c.hungry++;
     if (c.hungry < 3 || c.transit) return;
-    c.starveDay = this.day + 2;
+    // 魔物にやられた時と同じように3分倒れる。起きる時には食べ物を見つけている
+    c.food = 5;
+    c.hungry = 0;
+    if (c.ctrl) { this.playerDown(c, `${c.name}は空腹で倒れ、家に運ばれた（${DOWN_MIN}分間動けない）`); c.act.label = '空腹で倒れている'; return; }
     c.walking = false;
     c.state = 'down';
+    c.downUntil = this.t + DOWN_MIN;
     c.act = { cat: 'daily', label: '空腹で倒れている', until: Infinity, kind: 'idle' };
-    this.log(`🍽️ ${c.name}が空腹で倒れた…（2日後の朝まで動けない）`, c.world, [c.id], true);
+    this.log(`🍽️ ${c.name}が空腹で倒れた…`, c.world, [c.id], true);
+  },
+  // ---------- レモンタワー ----------
+  towerOpen(c, t) { return !t.need || (c.tower[t.need] || 0) >= TOP_FLOOR; },
+  // 塔の入り口まで歩いて、次の階に挑む
+  goTower(c, id) {
+    const t = towerById(id), w = this.m.worlds.get(c.world);
+    if (!t) return '知らない塔';
+    if (!w.geo.tower) return 'レモンタワーは現代にある';
+    if (!this.towerOpen(c, t)) return `${towerById(t.need).name}をクリアすると入れる`;
+    if ((c.tower[id] || 0) >= TOP_FLOOR) return 'もうクリアしている';
+    const p = w.geo.tower; // 塔の正面まで歩く
+    this.setAct(c, 'battle', `${t.name}に挑む`, 0, { x: p.x - Math.cos(p.a) * 8, z: p.z - Math.sin(p.a) * 8 }, 'towerGate', id, `${t.name}へ向かっている`);
+    return null;
+  },
+  enterTower(c, id) {
+    const t = towerById(id), f = (c.tower[id] || 0) + 1, st = floorStats(t, f);
+    const defs = Array.from({ length: st.count }, (_, i) => ({ id: `t${this.nextMonsterId++}`, lv: st.lv, base: st.base, boss: st.boss && i === 0, type: this.pickMonsterType(this.m.worlds.get(c.world)) }));
+    const foes = defs.map((m) => this.monsterUnit(m));
+    const act = c.act = { cat: 'battle', label: `${t.name} ${floorName(f)}`, until: Infinity, kind: 'tower' };
+    const end = (r) => {
+      if (c.act === act) c.act = { cat: 'daily', label: '待機中', until: this.playerHolds(c) ? Infinity : this.t, kind: 'idle' };
+      if (r.fled) return this.notify(c, 'タワーから逃げ出した');
+      if (!r.win) {
+        this.log(`💫 ${c.name}が${t.name}の${floorName(f)}で敗れた`, c.world, [c.id], false);
+        for (const p of this.partyOf(c)) if (p.world === c.world) { this.knockDown(p); this.emote(p, '💫'); }
+        return;
+      }
+      c.tower[id] = f;
+      const coin = floorCoins(t, f);
+      c.coins += coin;
+      this.winSpoils(c, defs);
+      c.kills += defs.length;
+      this.notify(c, `${floorName(f)}をクリア！ ${coin}コイン獲得`);
+      if (st.boss) this.log(`🍋 ${c.name}が${t.name}の${floorName(f)}をクリアした！`, c.world, [c.id], st.top || f % 50 === 0);
+      if (st.top) { this.emote(c, '🎉'); this.say(c, `${t.name}、制覇！`, 40); }
+    };
+    const r = this.fight(c, foes, { world: c.world, x: c.x, z: c.z, tower: id }, end);
+    if (!r) return;
+    if (this.quiet) return end(r);
+    this.pending.push({ at: this.t + r.sec, fn: () => end(r) });
   },
   // 操作していないキャラの買い物。足りなくなったら店かGUDAZONで買う
   npcShopping(c, geo) {
@@ -497,8 +532,7 @@ export const RPG = {
         this.buy(c, 'yasai');
         return this.setAct(c, 'shopping', `${s.name}の八百屋で買い物`, 20, { x: s.x + 1.5, z: s.z }, 'idle', null, '八百屋へ向かっている');
       }
-      if (!c.orders.length && !this.order(c, 'yasai')) { this.emote(c, '📦'); return false; }
-      if (!c.orders.length) this.order(c, 'onigiri');
+      if (!this.order(c, 'yasai') || !this.order(c, 'onigiri')) { this.emote(c, '📦'); return false; }
     }
     if (c.coins > 900 && chance(0.2)) {
       const s = this.seller('general', c.world);
@@ -508,7 +542,7 @@ export const RPG = {
         if (ITEMS[id].kind === 'exp') this.useField(c, id);
         return this.setAct(c, 'shopping', `${s.name}の店で買い物`, 20, { x: s.x + 1.5, z: s.z }, 'idle', null, '店へ向かっている');
       }
-      if (c.coins > 3000 && !c.orders.length) this.order(c, 'candyS');
+      if (c.coins > 3000 && !this.order(c, 'candyS')) this.useField(c, 'candyS');
     }
     return false;
   },

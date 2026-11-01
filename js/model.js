@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=48';
-import { themeOf } from './themes.js?v=48';
+import { seeded, hashStr } from './util.js?v=49';
+import { themeOf } from './themes.js?v=49';
 
 export const MAX_LEVEL = 300;
 export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限
@@ -162,6 +162,18 @@ function buildGeo(w, worlds) {
     taken.push({ ...edge, r: 8 });
   }
 
+  // 特別な建物: 現代のレモンタワー、幼界IFのフルリーア城。ポータルから離れた向きに置く
+  const landmark = (rr, r) => {
+    const gap = (a) => Math.min(...taken.slice(1).map((t) => Math.abs(Math.atan2(Math.sin(a - Math.atan2(t.z, t.x)), Math.cos(a - Math.atan2(t.z, t.x))))), Math.PI);
+    let best = 0;
+    for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; if (gap(a) > gap(best)) best = a; }
+    const p = { x: Math.cos(best) * rr, z: Math.sin(best) * rr, a: best };
+    taken.push({ x: p.x, z: p.z, r });
+    return p;
+  };
+  const tower = w.name === '現代' ? landmark(townR * 0.92, 15) : null;
+  const castle = w.name === '幼界IF' ? landmark(R * 0.56, 24) : null;
+
   const works = [];
   const nWorks = Math.min(6, Math.max(1, Math.ceil(n / 12)));
   for (let i = 0; i < nWorks; i++) works.push(place(townR * 0.75, townR * 1.05, 5));
@@ -186,7 +198,7 @@ function buildGeo(w, worlds) {
     const pos = wild ? place(townR + 2, R * 0.97, 2.2, 20) : place(plazaR + 2, townR, 2.2, 20);
     props.push({ ...p, x: pos.x, z: pos.z, s: rng.range(0.8, 1.5) * (wild ? 1.2 : 1), rot: rng() * Math.PI * 2, seed: rng() });
   }
-  return { R, plazaR, townR, homes, works, spots, pond, portals, props, edge };
+  return { R, plazaR, townR, homes, works, spots, pond, portals, props, edge, tower, castle };
 }
 
 // 世界線のつながりをたどった距離 (同じ世界団の中)。limit 歩まで

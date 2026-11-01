@@ -1,12 +1,14 @@
 // キャラ操作の画面: 操作パネルと手動の戦闘
-import { escapeHtml } from './util.js?v=48';
-import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=48';
-import { ownerHash } from './control.js?v=48';
+import { escapeHtml } from './util.js?v=49';
+import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=49';
+import { TOWERS, TOP_FLOOR, floorName, floorStats, floorCoins } from './tower.js?v=49';
+import { ownerHash } from './control.js?v=49';
 
 const $ = (s) => document.querySelector(s);
 const TOKEN_KEY = 'oc-multiverse-player';
 const PING_SEC = 10;
-const TABS = [['act', '行動'], ['move', '移動'], ['bag', '持ち物'], ['shop', '店'], ['net', 'GUDAZON'], ['ab', '特性'], ['etc', 'その他']];
+const DRIVE_SEC = 0.25, DRIVE_LEAD = 7; // WASD移動: 命令を送る間隔と、歩く先までの距離
+const TABS = [['act', '行動'], ['move', '移動'], ['bag', '持ち物'], ['shop', '店'], ['net', 'GUDAZON'], ['tower', 'タワー'], ['ab', '特性'], ['etc', 'その他']];
 const ACTS = [['work', '🔨 仕事'], ['hobby', '🎨 趣味'], ['train', '🥋 修行'], ['explore', '🧭 探検'], ['battle', '⚔️ 魔物退治'], ['chat', '💬 おしゃべり'], ['visit', '🏠 遊びに行く'], ['help', '🤝 手伝い'], ['shop', '🛍️ 買い物に行く'], ['eat', '🍙 ごはん'], ['water', '🥤 水を飲む'], ['sabori', '🛋️ サボる'], ['walkabout', '👣 散歩'], ['camp', '⛺ 野宿']];
 const CAT = { p: '物理', s: '特殊', x: '変化', v: '虚空', a: '反質', f: '封印' };
 
@@ -24,6 +26,9 @@ export class Play {
     this.token = t || newToken();
     this.who = ownerHash(this.token);
     this.tab = 'act';
+    this.drive = false;
+    this.driveT = 0;
+    this.driveKey = '';
     this.open = true;
     this.pingT = 0;
     this.drawT = 0;
@@ -59,6 +64,53 @@ export class Play {
     app.ui.lastInfo = '';
     app.ui.setSheet(null);
   }
+  // カメラをキャラに固定し、その間は WASD で歩く (スマホにはキーがないのでタップ移動のまま)
+  setDrive(on) {
+    const { app } = this, c = this.me;
+    if (on && (!c || app.ui.phone)) return;
+    if (this.drive === on) return;
+    if (!on) this.stopDrive(c);
+    this.drive = on;
+    app.sim.driving = on ? c.id : null;
+    if (on) this.showMe();
+    this.lastHtml = '';
+    app.ui.caption(on ? '🕹️ カメラ固定中：WASDで移動（Gで解除）' : null);
+    if (on) setTimeout(() => { if (!app.director.on) app.ui.caption(null); }, 2500);
+  }
+  stopDrive(c) {
+    if (this.driveKey && c?.walking) {
+      c.dest = null;
+      c.walking = false;
+      this.send('walk', { x: c.x, z: c.z, drive: true });
+    }
+    this.driveKey = '';
+  }
+  driveTick(c, dt) {
+    const { app } = this, v = app.view, k = app.keys;
+    if (app.director.on || app.selected !== c.id || !app.following) return this.setDrive(false);
+    const f = (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0), r = (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0);
+    const can = v.kind === 'world' && c.world === v.worldId && c.state === 'ok' && app.sim.playerHolds(c) && !app.sim.canAct(c);
+    if ((!f && !r) || !can) return this.stopDrive(c);
+    const key = `${f},${r}`;
+    this.driveT -= dt;
+    if (key === this.driveKey && this.driveT > 0) return;
+    this.driveKey = key;
+    this.driveT = DRIVE_SEC;
+    // カメラの向きを基準に進む
+    const off = v.camera.position.clone().sub(v.controls.target), n = Math.hypot(off.x, off.z) || 1;
+    const fx = -off.x / n, fz = -off.z / n;
+    let dx = fx * f - fz * r, dz = fz * f + fx * r;
+    const d = Math.hypot(dx, dz) || 1;
+    dx /= d; dz /= d;
+    const R = app.model.worlds.get(c.world).geo.R * 0.97;
+    let x = c.x + dx * DRIVE_LEAD, z = c.z + dz * DRIVE_LEAD;
+    const o = Math.hypot(x, z);
+    if (o > R) { x *= R / o; z *= R / o; }
+    // 届くのを待たずに手元でも歩き出す
+    c.dest = { x, z };
+    c.walking = true;
+    this.send('walk', { x, z, drive: true });
+  }
   // 地面をタップしたらそこへ歩く
   tapGround(ndc) {
     const c = this.me, v = this.app.view;
@@ -70,9 +122,10 @@ export class Play {
     return true;
   }
   onClick(e) {
-    const b = e.target.closest('[data-tab],[data-op],[data-ask],[data-cam]');
+    const b = e.target.closest('[data-tab],[data-op],[data-ask],[data-cam],[data-drive]');
     if (!b) return;
     if (b.dataset.cam) return this.showMe();
+    if (b.dataset.drive) return this.setDrive(!this.drive);
     if (b.dataset.ask) { this.asking = b.dataset.ask === 'yes'; this.lastHtml = ''; return this.draw(); }
     if (b.dataset.tab) { this.tab = b.dataset.tab; this.asking = false; this.lastHtml = ''; return this.draw(); }
     this.send(b.dataset.op, b.dataset.a ? JSON.parse(b.dataset.a) : {});
@@ -81,7 +134,8 @@ export class Play {
   tick(dt) {
     const c = this.me;
     $('#tg-play').hidden = !c;
-    if (!c) { if (!$('#play').hidden) $('#play').hidden = true; $('#bt').hidden = true; return; }
+    if (!c) { this.drive = false; this.app.sim.driving = null; if (!$('#play').hidden) $('#play').hidden = true; $('#bt').hidden = true; return; }
+    if (this.drive) this.driveTick(c, dt);
     if ((this.pingT -= dt) <= 0) { this.pingT = PING_SEC; this.send('ping'); }
     if (c.ctrl.msg && c.ctrl.msg.n !== this.msgN) {
       this.msgN = c.ctrl.msg.n;
@@ -107,7 +161,7 @@ export class Play {
   }
   head(c) {
     const { sim } = this.app, need = sim.expNeed(c.lv);
-    return `<div class="pl-head"><h3>🎮 ${escapeHtml(c.name)} <small>Lv${c.lv}</small><button class="btn" data-cam="1" title="操作中のキャラを映す">📍 カメラ</button></h3>`
+    return `<div class="pl-head"><h3>🎮 ${escapeHtml(c.name)} <small>Lv${c.lv}</small>${this.app.ui.phone ? '' : `<button class="btn ${this.drive ? 'on' : ''}" data-drive="1" title="カメラをキャラに固定して、WASDで歩く（Gキー）">🕹️ WASD</button>`}<button class="btn" data-cam="1" title="操作中のキャラを映す">📍 カメラ</button></h3>`
       + `<div class="pl-exp"><i style="width:${Math.min(100, (c.exp / need) * 100)}%"></i></div>`
       + `<div class="pl-st"><span>🪙 <b>${c.coins}</b></span><span>🍙 <b>${c.food}</b>${c.hungry ? `（空腹${c.hungry}日）` : ''}</span><span>🌀 <b>${sim.fmtPt(c.pts)}</b>/${sim.fmtPt(sim.ptCap(c))}pt</span>${c.halvedDay === sim.day ? '<span>😵 力が半減中</span>' : ''}</div>`
       + `<div class="pl-st">${escapeHtml(sim.displayAct(c).text)}${c.act.earned ? `（+${c.act.earned}🪙）` : ''}</div>`
@@ -128,9 +182,11 @@ export class Play {
     if (sim.partyAt(c.world)) hot.push(['party', '🎂 パーティーへ']);
     if (sim.contests.some((x) => x.world === c.world && x.started)) hot.push(['contest', '🚩 対抗戦を見る']);
     if (sim.repair[c.world] > sim.t) hot.push(['repair', '🧹 町の片付け']);
+    const tw = sim.m.worlds.get(c.world).geo.tower, next = tw && TOWERS.find((t) => sim.towerOpen(c, t) && (c.tower[t.id] || 0) < TOP_FLOOR);
+    if (next && Math.hypot(c.x - tw.x, c.z - tw.z) < 22) hot.push(['tower', `🍋 ${next.name}に挑む`, { id: next.id }]);
     const sleeping = c.state === 'sleep' || c.state === 'camp';
     return `<p class="pl-note">地面をタップするとそこへ歩きます。寝ないで朝を迎えると、その日は戦闘力が半減します。</p><div class="pl-grid">`
-      + hot.map(([op, l]) => this.btn(op, l, null, 'hot')).join('') + (sleeping ? this.btn('wake', '☀️ 起きる', null, 'hot') : this.btn('sleep', '💤 寝る'))
+      + hot.map(([op, l, a]) => this.btn(op, l, a, 'hot')).join('') + (sleeping ? this.btn('wake', '☀️ 起きる', null, 'hot') : this.btn('sleep', '💤 寝る'))
       + ACTS.map(([op, l]) => this.btn(op, l)).join('') + '</div>';
   }
   tab_move(c) {
@@ -155,7 +211,7 @@ export class Play {
     const buyer = sim.seller('buyer', c.world);
     const near = sim.charsIn(c.world).filter((o) => o !== c && o.state === 'ok').slice(0, 30);
     const give = (id) => (near.length && !c.transit ? this.btn('give', '渡す', { to: this.giveTo(near), id }) : '');
-    let html = `<p class="pl-note">食料 ${c.food}（毎朝1つ減ります。0のまま3日たつと2日後の朝まで倒れます）</p>`;
+    let html = `<p class="pl-note">食料 ${c.food}（毎朝1つ減ります。0のまま3日たつと3分間倒れます。起きた時には食料が5に戻ります）</p>`;
     if (near.length && !c.transit) html += `<div class="pl-grid">${this.btn('give', `🍙 ${escapeHtml(this.giveName(near))}に食料を渡す`, { to: this.giveTo(near), id: 'food' })}</div>`;
     if (!ids.length) return html + '<p class="pl-note">何も持っていません。</p>';
     return html + ids.map((id) => {
@@ -175,14 +231,24 @@ export class Play {
   tab_net(c) {
     const { sim } = this.app;
     const dist = sim.distFromGenzai(c.transit ? c.transit.from : c.world);
-    const orders = c.orders.length ? '<div class="pl-sec">配送中</div>' + c.orders.map((o) => `<div class="pl-row"><span>${escapeHtml(ITEMS[o.id].name)}<small>あと${Math.max(1, Math.ceil((o.at - sim.t) / 60))}時間で届く</small></span></div>`).join('') : '';
-    return `<p class="pl-note">GUDAZON SHOP: 注文の1日後に確実に届きます。現代から遠いほど高くなります。</p>${orders}`
+    return `<p class="pl-note">GUDAZON SHOP: 注文するとすぐ届きます。現代から遠いほど高くなります。</p>`
       + onlineItems().map((id) => `<div class="pl-row"><span>${escapeHtml(ITEMS[id].name)}<small>${escapeHtml(ITEMS[id].desc)}</small></span>${this.btn('order', `${onlinePrice(id, dist)}🪙`, { id })}</div>`).join('');
   }
   // 間違えて押さないよう、タブの奥で確認してからやめる
   tab_etc(c) {
     if (!this.asking) return `<p class="pl-note">操作をやめると、${escapeHtml(c.name)}は自分で行動するようになります。誰かが操作を始めると、戻れなくなることがあります。</p><div class="pl-grid"><button data-ask="yes">操作をやめる…</button></div>`;
     return `<p class="pl-note">本当に${escapeHtml(c.name)}の操作をやめますか？</p><div class="pl-grid"><button data-ask="no">やめない</button>${this.btn('release', 'やめる')}</div>`;
+  }
+  tab_tower(c) {
+    const { sim } = this.app;
+    const here = !c.transit && sim.m.worlds.get(c.world).geo.tower;
+    const rows = TOWERS.map((t) => {
+      const done = c.tower[t.id] || 0, open = sim.towerOpen(c, t), f = done + 1;
+      const sub = !open ? `${TOWERS.find((x) => x.id === t.need).name}をクリアすると入れる` : done >= TOP_FLOOR ? '制覇済み' : `次は${floorName(f)} ・ 魔物Lv${floorStats(t, f).lv} ・ ${floorCoins(t, f)}コイン`;
+      const can = here && open && done < TOP_FLOOR;
+      return `<div class="pl-row"><span>🍋 ${escapeHtml(t.name)}（${done}/${TOP_FLOOR}）<small>推奨Lv${t.lo}〜${t.hi} ・ ${sub}</small></span>${can ? this.btn('tower', '挑む', { id: t.id }) : ''}</div>`;
+    }).join('');
+    return `${here ? '' : '<p class="pl-note">レモンタワーは現代にあります。</p>'}${rows}`;
   }
   tab_ab(c) {
     const { sim } = this.app;

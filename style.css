@@ -398,6 +398,7 @@ body.nopanels #play { left: 10px; width: 400px; }
 .pl-head { padding: 10px 12px 6px; }
 .pl-head h3 { margin: 0; font-size: 15px; display: flex; gap: 6px; align-items: center; }
 .pl-head h3 button { margin-left: auto; }
+.pl-head h3 button + button { margin-left: 0; }
 .pl-st { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .pl-st b { color: var(--text); }
 .pl-exp { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .12); overflow: hidden; margin-top: 4px; }

@@ -1,15 +1,15 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=48';
-import { Sim } from './sim.js?v=48';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=48';
-import { UI } from './ui.js?v=48';
-import { Director } from './director.js?v=48';
-import { Play } from './play.js?v=48';
-import { Sound, moodOf, danMoodOf } from './audio.js?v=48';
-import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=48';
-import { Sync } from './sync.js?v=48';
-import { PostFX } from './fx.js?v=48';
+import { buildModel } from './model.js?v=49';
+import { Sim } from './sim.js?v=49';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=49';
+import { UI } from './ui.js?v=49';
+import { Director } from './director.js?v=49';
+import { Play } from './play.js?v=49';
+import { Sound, moodOf, danMoodOf } from './audio.js?v=49';
+import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=49';
+import { Sync } from './sync.js?v=49';
+import { PostFX } from './fx.js?v=49';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -31,7 +31,7 @@ class App {
     // キャラの漢字のコマは文字を絵にするので、先に読み込んでおく (珍しい漢字は同梱のフォント)
     const rare = fetch('fonts/chars.json').then((r) => r.json()).then((t) => document.fonts.load('40px "OC Jigmo"', t));
     await Promise.race([Promise.all([document.fonts.load('800 40px "M PLUS Rounded 1c"'), rare]), new Promise((r) => setTimeout(r, 2500))]).catch(() => {});
-    const raw = await fetch('data/data.json?v=48').then((r) => r.json());
+    const raw = await fetch('data/data.json?v=49').then((r) => r.json());
     this.model = buildModel(raw);
     this.sim = new Sim(this.model);
     // みんなの世界 (Supabase) があればそれを、なければこのブラウザの保存を読む
@@ -282,6 +282,7 @@ class App {
       if (e.code === 'Escape') { if (this.selected) this.selectChar(null); else this.goUp(); }
       else if (e.code === 'Slash') { e.preventDefault(); document.getElementById('search').focus(); }
       else if (e.code === 'KeyT') this.toggleFollow();
+      else if (e.code === 'KeyG') this.play.setDrive(!this.play.drive);
       else if (e.code === 'KeyO') this.director.toggle();
       else if (e.code === 'KeyM') this.ui.toggleMute();
       else if (e.code === 'KeyH') document.body.classList.toggle('nopanels');

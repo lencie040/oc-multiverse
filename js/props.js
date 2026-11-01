@@ -1,7 +1,7 @@
 // ローポリの構造物・自然物
 import * as THREE from 'three';
-import { portalMaterial } from './fx.js?v=48';
-import { FONT } from './util.js?v=48';
+import { portalMaterial } from './fx.js?v=49';
+import { FONT } from './util.js?v=49';
 
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -875,3 +875,186 @@ export function buildFlag(color) {
 }
 
 export { G as GEOMETRIES };
+
+// ---------- 特別な建物 ----------
+// 十字に重ねた箱で、丸い塔を積み木らしく作る
+function blockDisc(g, x, y, z, r, h, material) {
+  g.add(mesh(G.box, material, x, y + h / 2, z, r * 2, h, r * 1.4));
+  g.add(mesh(G.box, material, x, y + h / 2, z, r * 1.4, h, r * 2));
+}
+// 青白のしま模様の塔と、段々の屋根
+function castleTower(g, x, y, z, h, r, spire, c) {
+  blockDisc(g, x, y, z, r, h, c.wall);
+  for (const [dx, dz, w, d] of [[0, 1, r * 0.5, 0.2], [0, -1, r * 0.5, 0.2], [1, 0, 0.2, r * 0.5], [-1, 0, 0.2, r * 0.5]]) {
+    for (const k of [-0.32, 0.32]) g.add(mesh(G.box, c.sky, x + dx * r * 1.01 + (dz ? k * r * 1.1 : 0), y + h / 2, z + dz * r * 1.01 + (dx ? k * r * 1.1 : 0), w * 0.55 + 0.05, h, d));
+  }
+  blockDisc(g, x, y + h, z, r * 1.32, r * 0.3, c.dark);
+  const n = 6;
+  for (let i = 0; i < n; i++) {
+    const s = 1.22 - (i / n) * 0.95;
+    blockDisc(g, x, y + h + r * 0.3 + i * r * 0.5, z, r * s, r * 0.5, i % 2 ? c.teal : c.sky);
+  }
+  const top = y + h + r * 0.3 + n * r * 0.5;
+  blockDisc(g, x, top, z, r * 0.42, r * 0.3, c.green);
+  g.add(mesh(G.box, c.dark, x, top + spire / 2, z, 0.36, spire, 0.36));
+  g.add(mesh(G.octa, c.gem, x, top + spire + 0.2, z, 0.8, 1.2, 0.8));
+}
+// 葉の形をドット絵のように並べる (ang: 向き)。同じ色が続く所は1つの箱にまとめる
+function pixelLeaf(g, cx, cy, z, len, wid, ang, s, rim, fill, dots = null, spark = null) {
+  const cos = Math.cos(ang), sin = Math.sin(ang), n = Math.ceil(len / s) + 1;
+  const inside = (i, j) => {
+    const x = i * s, y = j * s, u = (x * cos + y * sin) / len, v = (-x * sin + y * cos) / wid;
+    return Math.abs(u) < 1 && Math.abs(v) < (1 - u * u) ** 0.8;
+  };
+  const ring = (i, j, d) => [[d, 0], [-d, 0], [0, d], [0, -d]].some(([a, b]) => !inside(i + a, j + b));
+  const kind = (i, j) => {
+    if (!inside(i, j)) return null;
+    if (ring(i, j, 1)) return rim;
+    if (dots && ring(i, j, 3) && !ring(i, j, 2) && (i + j) % 2 === 0) return dots;
+    if (spark && !ring(i, j, 4) && (i * 3 + j * 5) % 11 === 0) return spark;
+    return fill;
+  };
+  for (let j = -n; j <= n; j++) {
+    let start = -n, cur = kind(-n, j);
+    for (let i = -n + 1; i <= n + 1; i++) {
+      const k = i > n ? null : kind(i, j);
+      if (k === cur) continue;
+      if (cur) g.add(mesh(G.box, cur, cx + ((start + i - 1) / 2) * s, cy + j * s, z, (i - start) * s, s, cur === rim ? 0.8 : 0.5));
+      start = i; cur = k;
+    }
+  }
+}
+// 正面の丸い紋章 (緑の組みひも模様)
+const CASTLE_EMBLEM = [
+  '....ggggg....', '..gg..g..gg..', '.g...ggg...g.', '.g.gg.g.gg.g.', 'g..g..g..g..g', 'g.ggggggggg.g',
+  'ggg.g.g.g.ggg', 'g.ggggggggg.g', 'g..g..g..g..g', '.g.gg.g.gg.g.', '.g...ggg...g.', '..gg..g..gg..', '....ggggg....',
+];
+// フルリーア城 (正面が +z)
+export function buildCastle() {
+  const g = new THREE.Group();
+  // 正面が日陰になっても色が沈まないよう、少し自分で光らせる
+  const lit = (color, k = 0.35) => glow(color, k);
+  const c = {
+    wall: lit('#efeaf7', 0.5), cream: lit('#f7ead9', 0.5), blush: lit('#f4dcd8', 0.5), blue: lit('#2a78e0'), sky: lit('#4bb8ea'), teal: lit('#35b4c8'), dark: lit('#2f9e96'),
+    green: lit('#6fd8b6'), navy: lit('#2a4cc0'), stone: lit('#c4ccd8'), pearl: lit('#fbf3df', 0.6), lilac: lit('#e6e2f6', 0.6),
+    gem: glow('#8ff2e6', 0.9), water: glow('#35b6c8', 0.45), door: glow('#ffd98a', 0.7), glass: glow('#fff1d4', 0.5),
+  };
+  // 土台のテラスと手すり
+  const fz = 11.5;
+  g.add(mesh(G.box, c.wall, 0, 1.2, 0, 32, 2.4, 25));
+  g.add(mesh(G.box, c.blush, 0, 1.1, fz + 1.02, 32, 1.1, 0.1));
+  for (const sx of [-1, 1]) {
+    g.add(mesh(G.box, c.teal, sx * 8.5, 3, fz + 1, 13, 0.25, 0.4));
+    g.add(mesh(G.box, c.teal, sx * 15.8, 3, 0, 0.4, 0.25, 25));
+    for (let i = 0; i < 9; i++) g.add(mesh(G.box, c.dark, sx * (3.5 + i * 1.5), 2.7, fz + 1, 0.3, 0.6, 0.3));
+    for (let i = 0; i < 12; i++) g.add(mesh(G.box, c.dark, sx * 15.8, 2.7, -11 + i * 2, 0.3, 0.6, 0.3));
+  }
+  // 正面の階段
+  for (let i = 0; i < 6; i++) g.add(mesh(G.box, i % 2 ? c.dark : c.teal, 0, 0.2 + i * 0.4, fz + 5 - i, 7, 0.4, 1.02));
+  for (const sx of [-1, 1]) g.add(mesh(G.box, c.blue, sx * 3.8, 1.6, fz + 2.5, 0.6, 3.2, 6));
+  // 1階
+  const y1 = 2.4, h1 = 5.4, z1 = 7;
+  g.add(mesh(G.box, c.wall, 0, y1 + h1 / 2, 0, 24, h1, 14));
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const x = sx * (4.6 + i * 3.1);
+      g.add(mesh(G.box, c.blue, x - 1.25, y1 + h1 / 2, z1 + 0.15, 0.4, h1, 0.4));
+      g.add(mesh(G.box, c.dark, x - 1.25, y1 + h1 - 0.6, z1 + 0.3, 0.6, 1.2, 0.3));
+      g.add(mesh(G.box, c.glass, x + 0.25, y1 + 2.4, z1 + 0.06, 1.7, 3.2, 0.12));
+      g.add(mesh(G.box, c.sky, x + 0.25, y1 + 4.2, z1 + 0.1, 1.9, 0.3, 0.2));
+      g.add(mesh(G.box, c.blue, x + 0.25, y1 + 2.4, z1 + 0.14, 0.14, 3.2, 0.1));
+    }
+    g.add(mesh(G.torus, c.green, sx * 1.5, y1 + 3.7, z1 + 0.2, 1.5));
+    g.add(mesh(G.ball, c.pearl, sx * 1.5, y1 + 3.7, z1 + 0.14, 1));
+  }
+  g.add(mesh(G.box, c.door, 0, y1 + 1.2, z1 + 0.08, 1.8, 2.4, 0.12));
+  g.add(mesh(G.box, c.dark, 0, y1 + 2.7, z1 + 0.14, 2.3, 0.4, 0.3));
+  // 帯 (青地に白い点)
+  const y2 = y1 + h1;
+  g.add(mesh(G.box, c.blue, 0, y2 + 0.35, 0, 25.2, 0.7, 15.2));
+  for (let i = -12; i <= 12; i++) g.add(mesh(G.box, c.pearl, i, y2 + 0.35, 7.68, 0.34, 0.34, 0.1));
+  // 2階
+  const y3 = y2 + 0.7, h2 = 8, z2 = 6;
+  g.add(mesh(G.box, c.wall, 0, y3 + h2 / 2, 0, 19, h2, 12));
+  const ex = 0, ey = y3 + 4;
+  g.add(mesh(G.box, c.blue, ex, ey, z2 + 0.08, 8.6, 7.4, 0.16));
+  g.add(mesh(G.box, c.cream, ex, ey, z2 + 0.14, 7.8, 6.6, 0.16));
+  CASTLE_EMBLEM.forEach((row, j) => [...row].forEach((ch, i) => {
+    if (ch === 'g') g.add(mesh(G.box, (i + j) % 3 ? c.green : c.dark, ex + (i - 6) * 0.5, ey + (6 - j) * 0.48, z2 + 0.26, 0.5, 0.48, 0.1));
+  }));
+  for (const sx of [-1, 1]) {
+    for (const x of [5.9, 7.8]) {
+      g.add(mesh(G.box, c.blush, sx * x, y3 + 3.7, z2 + 0.06, 1.5, 5.6, 0.12));
+      g.add(mesh(G.box, c.sky, sx * x, y3 + 3.7, z2 + 0.13, 0.3, 5.2, 0.1));
+      g.add(mesh(G.box, c.blue, sx * (x + 0.95), y3 + 3.8, z2 + 0.15, 0.3, 7, 0.3));
+      g.add(mesh(G.box, c.dark, sx * x, y3 + 6.9, z2 + 0.18, 1.6, 0.5, 0.25));
+    }
+  }
+  // 軒と胸壁
+  const y4 = y3 + h2;
+  g.add(mesh(G.box, c.dark, 0, y4 + 0.25, 0, 20.4, 0.5, 13.4));
+  g.add(mesh(G.box, c.blue, 0, y4 + 0.8, 0, 19.6, 0.6, 12.6));
+  for (let i = -9; i <= 9; i++) {
+    g.add(mesh(G.box, c.pearl, i, y4 + 0.8, 6.32, 0.3, 0.3, 0.1));
+    g.add(mesh(G.box, i % 2 ? c.teal : c.green, i, y4 + 1.4, 6.1, 0.5, 0.6, 0.5));
+  }
+  // 屋根: 段々の寄棟。正面に青緑の破風
+  const y5 = y4 + 1.1, rows = 11;
+  for (let i = 0; i < rows; i++) {
+    const k = 1 - i / rows;
+    g.add(mesh(G.box, i % 2 ? c.blue : c.sky, 0, y5 + i * 0.8 + 0.4, -0.5, 6 + 13 * k, 0.8, 3 + 9 * k));
+    g.add(mesh(G.box, c.teal, 0, y5 + i * 0.8 + 0.4, -0.5 + (1.5 + 4.5 * k), 1.2, 0.84, 0.3));
+    for (const sx of [-1, 1]) g.add(mesh(G.box, c.teal, sx * 3.4, y5 + i * 0.8 + 0.4, -0.5 + (1.5 + 4.5 * k), 0.6, 0.84, 0.3));
+  }
+  const yTop = y5 + rows * 0.8;
+  g.add(mesh(G.box, c.dark, 0, yTop + 0.2, -0.5, 6.4, 0.4, 3.4));
+  for (let i = 0; i < 6; i++) g.add(mesh(G.box, i % 2 ? c.green : c.teal, 0, yTop + 0.7 + i * 0.7, 1, 6 - i, 0.7, 0.8));
+  g.add(mesh(G.octa, c.gem, 0, yTop + 3.4, 1.5, 1.4, 1.8, 0.8));
+  g.add(mesh(G.box, c.dark, 0, yTop + 6.8, 1, 0.34, 5, 0.34));
+  for (const sx of [-1, 1]) for (const x of [1.6, 3.4, 5.2]) g.add(mesh(G.box, c.dark, sx * x, yTop + 1 + (5.2 - x) * 0.3, 1, 0.22, 2 + (5.2 - x) * 0.5, 0.22));
+  // 塔: 屋根の奥の高い2本 / 2階の角 / テラスの角
+  for (const sx of [-1, 1]) {
+    castleTower(g, sx * 6.8, y4 + 1, -3.5, 13, 1.9, 7, c);
+    castleTower(g, sx * 10.4, y2, 6.2, 8.4, 1.35, 3.6, c);
+    castleTower(g, sx * 14.2, 2.4, 11.2, 8.5, 1.45, 4, c);
+    // テラスの角の塔から伸びる羽
+    const a = sx > 0 ? 0.42 : Math.PI - 0.42;
+    pixelLeaf(g, sx * 24, 15.5, 7.5, 10.5, 4.6, a, 0.65, c.blue, c.lilac);
+    // 奥の細長い街灯
+    g.add(mesh(G.box, c.navy, sx * 12.6, 15.5, -9, 0.7, 31, 0.7));
+    g.add(mesh(G.box, c.stone, sx * 12.6, 31.2, -9, 3, 0.7, 1.4));
+    g.add(mesh(G.box, c.stone, sx * 12.6, 31.7, -9, 1.7, 0.4, 1));
+  }
+  // 空に浮かぶ3枚の結晶
+  for (const [x, y, s] of [[0, 54, 1], [-9, 49.5, 0.92], [9, 49.5, 0.92]]) {
+    pixelLeaf(g, x, y, -3, 8 * s, 4 * s, Math.PI / 2, 0.55, c.blue, c.water, c.pearl, c.gem);
+  }
+  return g;
+}
+
+// レモンタワー: 塔の色は左から レモン / スーパー / ハイパー / エリート。上のものほど高い
+export function buildLemonTowers(colors) {
+  const g = new THREE.Group();
+  g.add(mesh(G.box, mat('#d8d4c4'), 0, 0.2, 0, 26, 0.4, 14));
+  colors.forEach((col, i) => {
+    const x = (i - 1.5) * 6.2, z = -1 - (i % 2) * 2.4, h = 18 + i * 5;
+    const body = mat(col), trim = mat('#fff6cf'), win = glow('#fff2b0', 0.8);
+    const steps = 4 + i;
+    for (let k = 0; k < steps; k++) {
+      const w = 4.8 - (k / steps) * 2.2, sh = h / steps, y = 0.4 + k * sh;
+      g.add(mesh(G.box, body, x, y + sh / 2, z, w, sh, w));
+      g.add(mesh(G.box, trim, x, y + sh, z, w + 0.5, 0.35, w + 0.5));
+      for (let n = 0; n < 3; n++) g.add(mesh(G.box, win, x + (n - 1) * (w * 0.28), y + sh * 0.55, z + w / 2 + 0.02, w * 0.16, sh * 0.42, 0.05));
+    }
+    g.add(mesh(G.box, mat('#6a4a2a'), x, 1.3, z + 2.42, 1.4, 1.8, 0.1));
+    // てっぺんのレモン
+    const top = 0.4 + h, k = 1.1 + i * 0.12;
+    g.add(mesh(G.ball, glow('#ffe14a', 0.35), x, top + 1.6 * k, z, 3.4 * k, 2.6 * k, 2.6 * k));
+    g.add(mesh(G.sphere, glow('#ffe14a', 0.35), x + 1.9 * k, top + 1.6 * k, z, 0.6 * k));
+    g.add(mesh(G.sphere, glow('#ffe14a', 0.35), x - 1.9 * k, top + 1.6 * k, z, 0.6 * k));
+    const leaf = mesh(G.sphere, mat('#5fae3a'), x + 0.4, top + 3.1 * k, z, 1.3 * k, 0.3 * k, 0.7 * k);
+    leaf.rotation.z = 0.5;
+    g.add(leaf);
+  });
+  return g;
+}

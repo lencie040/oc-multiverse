@@ -2,9 +2,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=48';
-import { TYPE_COLOR } from './types.js?v=48';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=48';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, buildCastle, buildLemonTowers, mat } from './props.js?v=49';
+import { TYPE_COLOR } from './types.js?v=49';
+import { TOWERS } from './tower.js?v=49';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=49';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -13,8 +14,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=48';
-import { CATS } from './sim.js?v=48';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=49';
+import { CATS } from './sim.js?v=49';
 
 // グラフィック設定 (低・中・高・超高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -137,8 +138,10 @@ class BaseView {
   // WASD 移動・QE 回転
   keyMove(dt) {
     const k = this.app.keys;
-    const f = (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0);
-    const r = (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0);
+    // カメラ固定中の WASD はキャラを歩かせる
+    const drive = this.app.play?.drive;
+    const f = drive ? 0 : (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0);
+    const r = drive ? 0 : (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0);
     const rot = (k.KeyE ? 1 : 0) - (k.KeyQ ? 1 : 0);
     const zoom = (k.KeyF ? 1 : 0) - (k.KeyR ? 1 : 0);
     if (!f && !r && !rot && !zoom) return false;
@@ -988,6 +991,16 @@ function buildMini(w, r) {
 }
 
 // 模型の建物や木。近づいた世界線の分だけ組み立てる
+// その世界線だけの大きな建物。正面を広場へ向ける
+function landmarkOf(geo) {
+  const p = geo.tower || geo.castle;
+  if (!p) return null;
+  const o = geo.tower ? buildLemonTowers(TOWERS.map((t) => t.color)) : buildCastle();
+  o.position.set(p.x, 0, p.z);
+  o.rotation.y = Math.atan2(-p.x, -p.z);
+  return o;
+}
+
 function buildMiniDetail(w, model, max) {
   const { geo, theme: th } = w;
   const g = new THREE.Group();
@@ -1009,6 +1022,8 @@ function buildMiniDetail(w, model, max) {
     b.position.set(wp.x, 0, wp.z);
     g.add(b);
   }
+  const landmark = landmarkOf(geo);
+  if (landmark) g.add(landmark);
   // 自然物などは多いので一部だけ
   for (const p of geo.props.slice(0, max ? 110 : 30)) {
     const o = buildProp(p.kind, p.color, p.seed);
@@ -1312,6 +1327,8 @@ export class WorldView extends BaseView {
         this.animated.push(o);
       } else staticRoot.add(o);
     }
+    const landmark = landmarkOf(geo);
+    if (landmark) staticRoot.add(landmark);
     this.scene.add(batchStatic(staticRoot));
 
     // ポータル
@@ -1345,6 +1362,15 @@ export class WorldView extends BaseView {
       this.portalLabels.push(lb);
       this.animated.push(pg);
       this.scene.add(pg);
+    }
+
+    // レモンタワーとフルリーア城の名前
+    for (const [p, text, y] of [[geo.tower, '🍋 レモンタワー', 26], [geo.castle, '🏰 フルリーア城', 30]]) {
+      if (!p) continue;
+      const lb = label(text, 'portal-label');
+      lb.position.set(p.x, y, p.z);
+      this.scene.add(lb);
+      this.portalLabels.push(lb);
     }
 
     // パーティクル

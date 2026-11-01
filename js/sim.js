@@ -1,10 +1,10 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=48';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=48';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=48';
-import { loadBattleData } from './battle.js?v=48';
-import { RPG } from './rpg.js?v=48';
-import { Control } from './control.js?v=48';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=49';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=49';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=49';
+import { loadBattleData } from './battle.js?v=49';
+import { RPG } from './rpg.js?v=49';
+import { Control } from './control.js?v=49';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -65,7 +65,7 @@ const EMOTES = {
 const FRIEND = 10, BEST = 25; // 友達・親友になる友好度 // 1ゲーム分あたりの出現率 (昼のみ)
 
 // 保存・同期するキャラの項目 (同期では吹き出しと絵文字も送る)
-const SAVE_KEYS = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins', 'lv', 'exp', 'coins', 'items', 'held', 'food', 'hungry', 'orders', 'ability', 'ctrl', 'starveDay', 'sleptKey', 'flags', 'downUntil'];
+const SAVE_KEYS = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins', 'lv', 'exp', 'coins', 'items', 'held', 'food', 'hungry', 'ability', 'ctrl', 'sleptKey', 'flags', 'downUntil', 'tower'];
 const SYNC_KEYS = [...SAVE_KEYS, 'bubble', 'emote'];
 // 普段の行動の長さ (現実の時間で、ずっと同じことをして見えないよう短めにする)
 const ACT_SCALE = 0.15;
@@ -141,7 +141,7 @@ export class Sim {
       bubble: null, kills: 0, downs: 0, travels: 0, log: [],
       trainDay: -1, treasures: 0, raidWins: 0, transit: null, friends: {}, emote: null,
       bdayParty: -1, contestWins: 0,
-      lv: 1, exp: 0, coins: 100, items: {}, held: null, food: 7, hungry: 0, orders: [], ability: null, ctrl: null, starveDay: null, sleptKey: -1, flags: {}, downUntil: null,
+      lv: 1, exp: 0, coins: 100, items: {}, held: null, food: 7, hungry: 0, ability: null, ctrl: null, sleptKey: -1, flags: {}, downUntil: null, tower: {},
     });
     c.types = splitTypes(c.type);
     const bd = /(\d+)月(\d+)日/.exec(c.birthday || '');
@@ -318,7 +318,7 @@ export class Sim {
       c.pts = Math.min(this.ptCap(c), c.pts + this.ptRate(c));
       this.morningFood(c);
       this.morningSleep(c);
-      if (c.state === 'down' && !c.transit && c.starveDay == null && c.downUntil == null) {
+      if (c.state === 'down' && !c.transit && c.downUntil == null) {
         c.state = 'ok';
         c.act = { cat: 'daily', label: '目を覚ました', until: this.t + rand(5, 30), kind: 'idle' };
       }
@@ -332,7 +332,6 @@ export class Sim {
   }
 
   updateChar(c, dt) {
-    this.checkOrders(c);
     if (c.transit) return this.stepTransit(c);
     if (c.bubble && this.t > c.bubble.until) c.bubble = null;
     if (c.state === 'down') { if (c.downUntil != null && this.t >= c.downUntil) this.recover(c); return; }
@@ -394,8 +393,7 @@ export class Sim {
     if (tr?.downed?.respawn != null) return { cat: 'battle', icon: '💫', text: `宇宙で倒れている（あと${Math.max(1, Math.ceil(tr.downed.respawn - this.t))}分で家に戻る）` };
     if (tr?.downed) return { cat: 'battle', icon: '💫', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」の間の宇宙で倒れている` };
     if (tr) return { cat: 'move', icon: tr.kind === 'dan' ? '🌌' : '🌀', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」へ移動中（あと${Math.max(1, Math.ceil(tr.end - (tr.pausedAt ?? this.t)))}分）` };
-    if (c.starveDay != null) return { cat: 'daily', icon: '🍽️', text: `空腹で倒れている（${c.starveDay - this.day}日後の朝まで）` };
-    if (c.downUntil != null) return { cat: 'battle', icon: '💫', text: `やられて動けない（あと${Math.max(1, Math.ceil(c.downUntil - this.t))}分）` };
+    if (c.downUntil != null) return { cat: 'battle', icon: '💫', text: `${c.act.label}（あと${Math.max(1, Math.ceil(c.downUntil - this.t))}分）` };
     if (c.state === 'down') return { cat: 'battle', icon: '💫', text: '倒れている（朝まで動けない）' };
     if (c.state === 'camp') return { cat: 'daily', icon: '⛺', text: '野宿中（すやすや）' };
     if (c.state === 'sleep') return { cat: 'daily', icon: '💤', text: '寝ている' };
@@ -418,6 +416,7 @@ export class Sim {
       if (r) done(r);
     }
     if (a.kind === 'danGate') return this.danJump(c, a.data.homeward, a.data.to);
+    if (a.kind === 'towerGate') return this.enterTower(c, a.data);
     if (a.kind === 'ask') return this.resolveAsk(c, a.data);
     if (a.kind === 'chat' && a.data) {
       this.say(c, pick(GREET));
@@ -1676,6 +1675,8 @@ export class Sim {
     return o;
   }
   applyChar(c, d) {
+    // 手元でWASD移動しているキャラは手元の位置を優先する (大きくずれた時だけホストに合わせる)
+    if (c.id === this.driving && c.walking && d.world === c.world && dist2(c.x, c.z, d.x, d.z) < 100) d = { ...d, x: c.x, z: c.z, dest: c.dest, walking: true };
     Object.assign(c, d);
     if (c.act && (c.act.until === 'INF' || c.act.until === null)) c.act.until = Infinity;
   }
@@ -1765,6 +1766,12 @@ export class Sim {
       delete c.movesLeft; delete c.lastDan;
       c.bdayParty ??= -1; c.contestWins ??= 0;
       c.trainDay ??= -1; c.treasures ??= 0; c.raidWins ??= 0; c.transit ??= null; c.friends ??= {};
+      // 以前の版の項目を今の形に直す
+      c.tower ??= {};
+      if (c.starveDay != null) { delete c.starveDay; c.state = 'ok'; c.food = 5; c.hungry = 0; c.act = { cat: 'daily', label: '目を覚ました', until: this.t, kind: 'idle' }; }
+      for (const o of c.orders || []) this.addItem(c, o.id, o.n);
+      delete c.orders;
+      if (c.act?.kind === 'tower') { c.act.kind = 'idle'; c.act.until = this.t; }
       // 途中で閉じられた戦闘は、なかったことにして続きから
       if (c.transit?.pausedAt != null && !c.transit.downed) this.resumeTransit(c.transit);
       if (c.act?.kind === 'fight') { c.act.kind = 'idle'; c.act.until = this.t; }
