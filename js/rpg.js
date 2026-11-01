@@ -1,9 +1,9 @@
 // レベル・戦闘・宇宙の魔物・救難信号・お金と持ち物 (Sim に足すメソッド)
-import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=45';
-import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=45';
-import { splitTypes } from './types.js?v=45';
-import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=45';
-import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=45';
+import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=46';
+import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=46';
+import { splitTypes } from './types.js?v=46';
+import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=46';
+import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=46';
 
 const TURN_SEC = 0.9; // 自動の戦闘の1ターンの長さ (秒)
 const FIGHT_MIN = 2 / 60, FIGHT_MAX = 8 / 60; // 自動の戦闘の長さ (分)
@@ -14,6 +14,7 @@ const SOS_RANGE = 3; // 救難信号が届く世界線の距離
 const SOS_EVERY = 180; // 操作していないキャラが救難信号を出し直す間隔 (分)
 const TRANSIT_MIN_LV = 20;
 export const TRANSIT_BASE = 200; // 宇宙の魔物の種族値 (1能力あたり)
+export const DOWN_MIN = 3; // 操作中のキャラがやられた時に動けない長さ (分)
 const SAFE_ODDS = 0.5; // 操作していないキャラが世界線移動に出る勝率の目安
 
 const monsterMoves = (type) => [
@@ -273,7 +274,10 @@ export const RPG = {
     const tr = c.transit;
     if (tr.downed) {
       if (c.state !== 'down') c.state = 'down';
-      if (!this.playerHolds(c) && this.t >= tr.downed.next) this.sendSOS(c);
+      // 操作中のキャラは、少し待つと家で起き上がる (倒れている途中で操作を始めた時も同じ)
+      if (c.ctrl) tr.downed.respawn ??= this.t + DOWN_MIN;
+      if (tr.downed.respawn != null) { if (this.t >= tr.downed.respawn) this.respawnHome(c); return; }
+      if (this.t >= tr.downed.next) this.sendSOS(c);
       return;
     }
     if (tr.pausedAt != null) return;
@@ -313,6 +317,11 @@ export const RPG = {
     if (this.daily) this.daily.downs += this.partyOf(c).length;
     const a = this.wname(tr.from), b = this.wname(tr.to);
     this.log(`💫 ${this.partyNames(c)}が「${a}」と「${b}」の間の宇宙で魔物に敗れ、倒れている`, tr.from, this.partyOf(c).map((p) => p.id), true, { kind: 'space-down' });
+  },
+  respawnHome(c) {
+    c.transit = null;
+    this.sendHome(c, `${c.name}は宇宙で倒れ、家で目を覚ました`);
+    this.notify(c, '家で目を覚ました');
   },
   // 救難信号: 倒れた場所の両端から3マス以内の世界線に届く
   sosWorlds(tr) {

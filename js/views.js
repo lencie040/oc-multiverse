@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=45';
-import { TYPE_COLOR } from './types.js?v=45';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=45';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, mat } from './props.js?v=46';
+import { TYPE_COLOR } from './types.js?v=46';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=46';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -13,8 +13,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=45';
-import { CATS } from './sim.js?v=45';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=46';
+import { CATS } from './sim.js?v=46';
 
 // グラフィック設定 (低・中・高・超高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';

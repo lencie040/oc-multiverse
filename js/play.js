@@ -1,7 +1,7 @@
 // キャラ操作の画面: 操作パネルと手動の戦闘
-import { escapeHtml } from './util.js?v=45';
-import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=45';
-import { ownerHash } from './control.js?v=45';
+import { escapeHtml } from './util.js?v=46';
+import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=46';
+import { ownerHash } from './control.js?v=46';
 
 const $ = (s) => document.querySelector(s);
 const TOKEN_KEY = 'oc-multiverse-player';
@@ -106,7 +106,7 @@ export class Play {
     const { sim } = this.app;
     if (c.ctrl.auto) return '<p class="pl-note">自動移動中です。チェックを外すと、その場で止まって操作できます。</p>';
     if (c.ctrl.home) return '<p class="pl-note">自動帰宅中です。いちばん安い道で家へ向かいます（ptが足りない時は、足りる所まで）。</p>';
-    if (sim.transitOf(c)) return c.transit?.downed ? `<p class="pl-note">宇宙で倒れています。周辺3マスの世界線に救難信号を出せます。</p><div class="pl-grid">${this.btn('sos', '🆘 救難信号')}</div>${c.items.beacon ? `<div class="pl-grid">${this.btn('use', '💧 復活のしずく', { id: 'beacon' })}</div>` : ''}` : '<p class="pl-note">移動中です。</p>';
+    if (sim.transitOf(c)) return c.transit?.downed ? `<p class="pl-note">${escapeHtml(sim.displayAct(c).text)}</p>${c.items.beacon ? `<div class="pl-grid">${this.btn('use', '💧 復活のしずく', { id: 'beacon' })}</div>` : ''}` : '<p class="pl-note">移動中です。</p>';
     if (c.state === 'down') return `<p class="pl-note">${escapeHtml(sim.displayAct(c).text)}</p>`;
     const hot = [];
     const r = sim.raidAt(c.world);

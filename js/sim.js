@@ -1,10 +1,10 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=45';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=45';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=45';
-import { loadBattleData } from './battle.js?v=45';
-import { RPG } from './rpg.js?v=45';
-import { Control } from './control.js?v=45';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=46';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=46';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=46';
+import { loadBattleData } from './battle.js?v=46';
+import { RPG } from './rpg.js?v=46';
+import { Control } from './control.js?v=46';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -390,6 +390,7 @@ export class Sim {
 
   displayAct(c) {
     const tr = this.transitOf(c);
+    if (tr?.downed?.respawn != null) return { cat: 'battle', icon: '💫', text: `宇宙で倒れている（あと${Math.max(1, Math.ceil(tr.downed.respawn - this.t))}分で家に戻る）` };
     if (tr?.downed) return { cat: 'battle', icon: '💫', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」の間の宇宙で倒れている` };
     if (tr) return { cat: 'move', icon: tr.kind === 'dan' ? '🌌' : '🌀', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」へ移動中（あと${Math.max(1, Math.ceil(tr.end - (tr.pausedAt ?? this.t)))}分）` };
     if (c.starveDay != null) return { cat: 'daily', icon: '🍽️', text: `空腹で倒れている（${c.starveDay - this.day}日後の朝まで）` };

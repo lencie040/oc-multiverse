@@ -1,15 +1,14 @@
 // キャラ操作: 見ている人からの命令を受けて、そのキャラを動かす (Sim に足すメソッド)
 // 命令はホストだけが実行する。結果は普段の同期で全員に届く
-import { rand, randInt, pick, dist2, hashStr } from './util.js?v=45';
-import { randomTown, powerAt } from './model.js?v=45';
-import { monsterType } from './types.js?v=45';
-import { makeUnit, autoBattle } from './battle.js?v=45';
-import { ITEMS } from './items.js?v=45';
-import { CTRL_EXPIRE } from './rpg.js?v=45';
+import { rand, randInt, pick, dist2, hashStr } from './util.js?v=46';
+import { randomTown, powerAt } from './model.js?v=46';
+import { monsterType } from './types.js?v=46';
+import { makeUnit, autoBattle } from './battle.js?v=46';
+import { ITEMS } from './items.js?v=46';
+import { CTRL_EXPIRE, DOWN_MIN } from './rpg.js?v=46';
 
 // 操作して何かをやり遂げた時のコイン (難しいことほど多い)
 const ACT_COINS = { work: 30, training: 20, explore: 25, help: 20, social: 8, hobby: 6, sabori: 2, daily: 3 };
-const DOWN_MIN = 3; // 操作中のキャラがやられた時に動けない長さ (分)
 const OWN = ['ゴロゴロする', 'スマホをいじる', 'ぼーっとする', 'お菓子をつまむ', 'テレビを眺める'];
 
 export const ownerHash = (token) => 'p' + hashStr('player:' + token).toString(36);
@@ -152,7 +151,7 @@ export const Control = {
       case 'order': return this.order(c, a.id, a.n || 1);
       case 'use': return this.useField(c, a.id);
       case 'give': return c.state === 'down' ? '倒れていて動けない' : this.give(c, a);
-      case 'sos': return c.transit?.downed ? (this.sendSOS(c), null) : '倒れていない';
+      case 'sos': return c.transit?.downed ? 'もうすぐ家で目を覚ます' : '倒れていない';
       case 'move': case 'bitem': case 'run': return this.battleCommand(c, op, a);
       case 'wake':
         if (c.state !== 'sleep' && c.state !== 'camp') return '寝ていない';
