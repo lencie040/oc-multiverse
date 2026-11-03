@@ -1,10 +1,10 @@
 // レベル・戦闘・宇宙の魔物・救難信号・お金と持ち物 (Sim に足すメソッド)
-import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=49';
-import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=49';
-import { splitTypes } from './types.js?v=49';
-import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=49';
-import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=49';
-import { TOP_FLOOR, towerById, floorName, floorStats, floorCoins } from './tower.js?v=49';
+import { rand, randInt, pick, chance, MIN_PER_DAY, hashStr } from './util.js?v=50';
+import { powerAt, MAX_LEVEL, worldsWithin } from './model.js?v=50';
+import { splitTypes } from './types.js?v=50';
+import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost, canUseMove } from './battle.js?v=50';
+import { ITEMS, SELLERS, sellPrice, onlinePrice } from './items.js?v=50';
+import { TOP_FLOOR, towerById, floorName, floorStats, floorCoins } from './tower.js?v=50';
 
 const TURN_SEC = 0.9; // 自動の戦闘の1ターンの長さ (秒)
 const FIGHT_MIN = 2 / 60, FIGHT_MAX = 8 / 60; // 自動の戦闘の長さ (分)

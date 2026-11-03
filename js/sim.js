@@ -1,10 +1,10 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=49';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=49';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=49';
-import { loadBattleData } from './battle.js?v=49';
-import { RPG } from './rpg.js?v=49';
-import { Control } from './control.js?v=49';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=50';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=50';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=50';
+import { loadBattleData } from './battle.js?v=50';
+import { RPG } from './rpg.js?v=50';
+import { Control } from './control.js?v=50';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -335,6 +335,8 @@ export class Sim {
     if (c.transit) return this.stepTransit(c);
     if (c.bubble && this.t > c.bubble.until) c.bubble = null;
     if (c.state === 'down') { if (c.downUntil != null && this.t >= c.downUntil) this.recover(c); return; }
+    // 夕方から朝までに少しでも寝ていれば、その夜は寝たことにする (野宿も含む)
+    if ((c.state === 'sleep' || c.state === 'camp') && (this.hour >= 18 || this.hour < 6)) c.sleptKey = this.nightKey();
     if (c.partyLeader) return this.followLeader(c, dt);
     if (c.act.kind === 'defend') return this.defendStep(c, dt);
     if (c.walking) {

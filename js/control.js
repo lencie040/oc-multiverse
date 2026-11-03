@@ -1,11 +1,11 @@
 // キャラ操作: 見ている人からの命令を受けて、そのキャラを動かす (Sim に足すメソッド)
 // 命令はホストだけが実行する。結果は普段の同期で全員に届く
-import { rand, randInt, pick, dist2, hashStr } from './util.js?v=49';
-import { randomTown, powerAt } from './model.js?v=49';
-import { monsterType } from './types.js?v=49';
-import { makeUnit, autoBattle } from './battle.js?v=49';
-import { ITEMS } from './items.js?v=49';
-import { CTRL_EXPIRE, DOWN_MIN } from './rpg.js?v=49';
+import { rand, randInt, pick, dist2, hashStr } from './util.js?v=50';
+import { randomTown, powerAt } from './model.js?v=50';
+import { monsterType } from './types.js?v=50';
+import { makeUnit, autoBattle } from './battle.js?v=50';
+import { ITEMS } from './items.js?v=50';
+import { CTRL_EXPIRE, DOWN_MIN } from './rpg.js?v=50';
 
 // 操作して何かをやり遂げた時のコイン (難しいことほど多い)
 const ACT_COINS = { training: 20, explore: 25, help: 20, social: 8, hobby: 6, sabori: 2, daily: 3 };
@@ -44,7 +44,7 @@ export const Control = {
   },
   // 寝ないまま朝を迎えると、その日は力が半減する
   morningSleep(c) {
-    if (!this.playerHolds(c) || c.transit?.downed || c.state === 'sleep') return;
+    if (!this.playerHolds(c) || c.transit?.downed || c.state === 'sleep' || c.state === 'camp') return;
     if (c.sleptKey === this.day - 1) return;
     c.halvedDay = this.day;
     this.log(`🥱 ${c.name}は寝ずに朝を迎えた（今日は戦闘力が半減）`, c.transit ? c.home : c.world, [c.id], false);
@@ -184,7 +184,6 @@ export const Control = {
         return this.setAct(c, 'move', '待機中', Infinity, { x: a.x * k, z: a.z * k }, 'idle', null, '歩いている');
       }
       case 'sleep':
-        if (this.isNight) c.sleptKey = this.nightKey();
         return this.setAct(c, 'daily', '寝る', this.nextMorning() - this.t + rand(0, 60), c.world === c.home ? home : null, 'sleep', null, '家に帰っている');
       case 'hobby': return this.doHobby(c, geo, home);
       case 'work': { const wp = pick(geo.works); return this.setAct(c, 'work', c.job, rand(90, 220), { x: wp.x + rand(-3, 3), z: wp.z + rand(-3, 3) }); }
