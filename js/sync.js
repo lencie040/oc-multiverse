@@ -34,14 +34,26 @@ export class Sync {
     this.lastSave = Date.now();
   }
 
+  get manualSolo() {
+    return new URLSearchParams(location.search).has('solo') || ['localhost', '127.0.0.1'].includes(location.hostname);
+  }
+
+  async connect() {
+    if (this.manualSolo) throw new Error('ソロモードではオンライン接続が無効です');
+    this.clientPromise ??= timeout(import(LIB), 10000)
+      .then(({ createClient }) => createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } }))
+      .catch((error) => { this.clientPromise = null; throw error; });
+    this.sb = await this.clientPromise;
+    return this.sb;
+  }
+
   // 起動時: 保存された世界を読む。undefined = 同期を使えない、null = まだ保存がない
   async load() {
     // ?solo を付けると同期せずに動く (表示の確認用。みんなの世界に影響しない)
     // 手元の確認用サーバーは、公開前の版がみんなの世界を上書きしないよう必ず同期しない
-    if (!this.catalog.checkedAt || new URLSearchParams(location.search).has('solo') || ['localhost', '127.0.0.1'].includes(location.hostname)) return undefined;
+    if (!this.catalog.checkedAt || this.manualSolo) return undefined;
     try {
-      const { createClient } = await timeout(import(LIB), 8000);
-      this.sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
+      await this.connect();
       const { data, error } = await timeout(this.sb.from('world_state').select('state').eq('id', 'main').maybeSingle(), 8000);
       if (error) throw error;
       this.role = 'wait';

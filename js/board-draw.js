@@ -1,166 +1,225 @@
-import { seeded, hashStr } from './util.js?v=52';
-import { MAP_W, MAP_H, TILES } from './board-map.js?v=52';
+import * as THREE from 'three';
+import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { MAP_W, MAP_H, TILES } from './board-map.js?v=53';
+import { charTexture } from './views.js?v=53';
 
-const drawCircle = (ctx, x, y, r, fill, stroke, weight = 1) => {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = weight; ctx.stroke(); }
-};
+const CYAN = '#81efff';
+const GOLD = '#ffe18f';
+const normal = new THREE.Vector3(0, 1, 0);
+const color = new THREE.Color();
+const dummy = new THREE.Object3D();
 
-function text(ctx, value, x, y, color, font = '700 14px system-ui', align = 'center') {
-  ctx.textAlign = align;
-  ctx.textBaseline = 'middle';
-  ctx.font = font;
-  ctx.fillStyle = color;
-  ctx.fillText(value, x, y);
+function tag(text, className, parent) {
+  const el = document.createElement('div');
+  el.className = className;
+  el.textContent = text;
+  const label = new CSS2DObject(el);
+  parent.add(label);
+  return label;
 }
 
-function staticBoard(world, board) {
-  const canvas = document.createElement('canvas');
-  canvas.width = MAP_W;
-  canvas.height = MAP_H;
-  const ctx = canvas.getContext('2d');
-  const fill = ctx.createRadialGradient(490, 310, 40, 495, 330, 560);
-  fill.addColorStop(0, world.theme.ground + '40');
-  fill.addColorStop(0.65, '#172036');
-  fill.addColorStop(1, '#090d1c');
-  ctx.fillStyle = fill;
-  ctx.fillRect(0, 0, MAP_W, MAP_H);
+export class BoardScene {
+  constructor(view, board) {
+    this.view = view;
+    this.r = view.world.geo.R;
+    this.unit = Math.max(0.95, this.r * 0.029);
+    this.height = this.unit * 0.42;
+    this.board = board;
+    this.group = new THREE.Group();
+    this.pawns = new Map();
+    this.ray = new THREE.Raycaster();
+    this.points = board.tiles.map(({ x, y }) => new THREE.Vector3(
+      (x / MAP_W - 0.5) * this.r * 2.0, this.height,
+      (y / MAP_H - 0.5) * this.r * 2.16,
+    ));
+    const cylinder = new THREE.CylinderGeometry(1, 1.11, 0.48, 22);
+    this.discs = new THREE.InstancedMesh(cylinder, new THREE.MeshBasicMaterial(), board.tiles.length);
+    this.group.add(this.discs);
+    this.labels = new THREE.Group();
+    this.group.add(this.labels);
 
-  const rng = seeded(hashStr('canvas:' + world.id));
-  for (let i = 0; i < 185; i++) {
-    drawCircle(ctx, rng.range(0, MAP_W), rng.range(0, MAP_H), rng.range(0.3, 1.5), i % 7 === 0 ? '#c8d6ef88' : '#c8d6ef35');
-  }
-  for (let i = 0; i < 13; i++) {
-    ctx.beginPath();
-    for (let j = 0; j <= 100; j++) {
-      const a = j * Math.PI * 2 / 100;
-      const ripple = 1 + 0.034 * Math.cos(a * 7 + i * 0.17) + 0.032 * Math.sin(a * 3 - i * 0.19);
-      const x = 500 + (190 + i * 23) * Math.cos(a) * ripple;
-      const y = 340 + (104 + i * 15.5) * Math.sin(a) * ripple;
-      if (!j) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = i % 3 === 0 ? '#c1d6ed29' : '#b4cbe713';
-    ctx.lineWidth = 1.3;
-    ctx.stroke();
-  }
-  const line = (a, b) => {
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-  };
-  ctx.beginPath();
-  for (const a of board.tiles) line(a, board.tiles[a.next]);
-  ctx.lineWidth = 7;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#7f9cc440';
-  ctx.stroke();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#aec6ed65';
-  ctx.stroke();
-  ctx.beginPath();
-  for (const a of board.tiles) for (const b of a.links) if (a.id < b) line(a, board.tiles[b]);
-  ctx.setLineDash([4, 6]);
-  ctx.strokeStyle = '#8aeddc9b';
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  const font = '"M PLUS Rounded 1c","OC Jigmo",system-ui';
-  text(ctx, world.id, 500, 304, '#a9c4e9', '800 15px ' + font);
-  text(ctx, world.name, 500, 343, '#f4f6ff', '800 40px ' + font);
-  text(ctx, world.yomi || world.dan, 500, 380, '#b4c6e1', '700 15px ' + font);
-  return canvas;
-}
-
-export class BoardDrawing {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.locations = new Map();
+    const route = (edges, tint, width) => {
+      const geometry = new THREE.BoxGeometry(1, 0.12, 1);
+      const line = new THREE.InstancedMesh(geometry, new THREE.MeshBasicMaterial({ color: tint }), edges.length);
+      edges.forEach(([a, b], i) => {
+        const A = this.points[a], B = this.points[b];
+        dummy.position.copy(A).lerp(B, 0.5);
+        dummy.position.y = this.height * 0.62;
+        dummy.rotation.set(0, Math.atan2(B.x - A.x, B.z - A.z), 0);
+        dummy.scale.set(this.unit * width, 1, A.distanceTo(B));
+        dummy.updateMatrix();
+        line.setMatrixAt(i, dummy.matrix);
+      });
+      this.group.add(line);
+    };
+    route(board.tiles.map((t) => [t.id, t.next]), '#416079', 0.48);
+    route(board.tiles.flatMap((t) => t.links.filter((b) => b > t.id).map((b) => [t.id, b])), '#6cbdad', 0.33);
+    this.auraGeometry = new THREE.RingGeometry(1.14, 1.35, 32);
+    this.auraGeometry.rotateX(-Math.PI / 2);
+    this.auraMaterial = new THREE.MeshBasicMaterial({ color: GOLD, side: THREE.DoubleSide });
+    view.scene.add(this.group);
   }
 
-  draw(game, view, time) {
-    const ctx = this.ctx, board = game.board(view.world), world = game.model.worlds.get(view.world);
-    if (this.world !== world.id) {
-      this.world = world.id;
-      this.base = staticBoard(world, board);
-      this.locations.clear();
-    }
-    if (view.battle) return this.battle(view, time);
-    ctx.drawImage(this.base, 0, 0);
-    const crystal = game.state.crystals[world.id];
-    const options = view.offer?.kind === 'branch' ? view.offer.data : [];
-    for (const id of options) {
-      const a = board.tiles[view.tile], b = board.tiles[id];
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = '#ffe487';
-      ctx.stroke();
-    }
-    for (const tile of board.tiles) {
-      const type = tile.id === crystal ? 'crystal' : tile.type, data = TILES[type], { x, y } = tile;
-      if (data.pass) {
-        const star = type === 'crystal';
-        drawCircle(ctx, x, y, star ? 14 + Math.sin(time * 5) * 3 : 10, star ? '#77eaff39' : '#77eaff22');
-        drawCircle(ctx, x, y, star ? 5 : 4, '#83efff', '#d3fbff', 1);
-        const icon = star ? '◆' : type === 'shop' ? '▣' : '⟡';
-        text(ctx, icon, x, y - 15, star ? '#e1fbff' : '#a5e8ff', '800 ' + (star ? 18 : 13) + 'px system-ui');
-      } else {
-        drawCircle(ctx, x, y + 2, 10, '#060b16a8');
-        drawCircle(ctx, x, y, 9.8, data.color, '#c2d3ebbb', 1.25);
-        text(ctx, data.label, x, y + 0.5, type === 'black' ? '#fff' : '#0b1428', '800 10px system-ui');
+  frame(point = null) {
+    const { camera, controls } = this.view;
+    // 島をほぼ真上から把握できる角度。観戦と同じ操作で回転・ズーム可能。
+    const r = point ? Math.max(12, this.r * 0.35) : this.r * Math.max(1, 0.98 / camera.aspect);
+    controls.target.copy(point ?? new THREE.Vector3());
+    camera.position.copy(controls.target).add(new THREE.Vector3(r * 0.15, r * 2.28, r * 0.52));
+    controls.update();
+  }
+
+  updateTiles(game, p) {
+    const crystal = game.crystal(p.world);
+    this.options = p.offer?.kind === 'branch' ? p.offer.data : [];
+    const signature = [crystal, ...this.options].join('/');
+    if (signature === this.signature) return;
+    this.signature = signature;
+    this.labels.clear();
+    this.board.tiles.forEach((tile, i) => {
+      const type = i === crystal ? 'crystal' : tile.type;
+      const data = TILES[type], pass = data.pass;
+      const position = this.points[i];
+      dummy.position.copy(position);
+      dummy.rotation.set(0, 0, 0);
+      const scale = this.unit * (pass ? 0.31 : 1);
+      dummy.scale.set(scale, this.unit * (pass ? 0.72 : 0.52), scale);
+      dummy.updateMatrix();
+      this.discs.setMatrixAt(i, dummy.matrix);
+      this.discs.setColorAt(i, color.set(pass ? CYAN : data.color));
+      const branch = this.options.indexOf(i);
+      const symbol = type === 'crystal' ? '◆' : type === 'shop' ? '▣' : type === 'gate' ? '⟡' : '';
+      const text = symbol || (['blue', 'red'].includes(type) ? '' : data.label);
+      if (text || branch >= 0) {
+        const style = branch >= 0 ? ' branch' : symbol ? '' : ' tile';
+        const label = tag(branch >= 0 ? String(branch + 1) : text, 'board-map-label' + style, this.labels);
+        label.position.copy(position);
+        label.position.y += this.unit * 0.7;
       }
-    }
-    options.forEach((id, i) => {
-      const t = board.tiles[id];
-      drawCircle(ctx, t.x, t.y, 16, null, '#ffe487', 3);
-      drawCircle(ctx, t.x + 13, t.y - 13, 7.6, '#ffe487');
-      text(ctx, i + 1, t.x + 13, t.y - 13, '#182034', '800 11px system-ui');
+      if (branch >= 0 || type === 'crystal') {
+        const ring = new THREE.Mesh(this.auraGeometry, this.auraMaterial);
+        ring.position.copy(position);
+        ring.position.y += this.unit * 0.2;
+        ring.scale.setScalar(this.unit * (branch >= 0 ? 1.15 : 0.58));
+        this.labels.add(ring);
+      }
     });
-    const players = game.state.players.filter((p) => p.world === view.world);
-    players.forEach((p, i) => {
-      const tile = board.tiles[p.tile];
-      const together = players.filter((q) => q.tile === p.tile);
-      const offset = (together.indexOf(p) - (together.length - 1) / 2) * 20;
-      const target = { x: tile.x + offset, y: tile.y - 22 };
-      const pos = this.locations.get(p.id) ?? target;
-      pos.x += (target.x - pos.x) * 0.32;
-      pos.y += (target.y - pos.y) * 0.32;
-      this.locations.set(p.id, pos);
-      drawCircle(ctx, pos.x, pos.y, p === view ? 13 : 11, p.color, p === view ? '#fff' : '#132344', 2);
-      const token = p === view ? '◎' : p.bot ? 'C' + (i + 1) : '◇';
-      text(ctx, token, pos.x, pos.y + 0.5, '#17213a', '900 11px system-ui');
-      if (p.duel) text(ctx, '⚔', pos.x, pos.y - 21, '#ffb8d4', '800 17px system-ui');
-    });
+    this.discs.instanceMatrix.needsUpdate = true;
+    this.discs.instanceColor.needsUpdate = true;
+    this.discs.computeBoundingSphere();
   }
 
-  battle(p, time) {
-    const ctx = this.ctx, b = p.battle, order = ['上段', '中央', '下段'];
-    ctx.fillStyle = '#10152a';
-    ctx.fillRect(0, 0, MAP_W, MAP_H);
-    text(ctx, '魔物とのリアルタイム戦闘', 500, 82, '#f5e4fa', '800 30px system-ui');
-    for (let lane = 0; lane < 3; lane++) {
-      const y = 160 + lane * 143;
-      ctx.fillStyle = lane === b.lane && b.burst < 2 ? '#692f50' : '#1c2643';
-      ctx.fillRect(64, y, 872, 119);
-      text(ctx, order[lane], 112, y + 21, '#a8bde1');
-      if (lane === b.lane && b.burst < 2) text(ctx, '敵の大技まで ' + Math.max(0, b.burst).toFixed(1) + '秒', 490, y + 20, '#ffc5d7', '800 16px system-ui');
-    }
-    for (const [army, color] of [[b.allies, p.color], [b.enemies, '#ff8da6']]) {
-      for (const u of army) {
-        const x = 70 + u.x * 8.5, y = 220 + u.lane * 143 + (u.homeLane != null && u.homeLane !== u.lane ? 27 : 0);
-        drawCircle(ctx, x, y, 22, u.hp <= 0 ? '#646274' : u.hit > 0 ? '#fff' : color, '#ffffff88', 2);
-        ctx.fillStyle = '#090c18';
-        ctx.fillRect(x - 31, y + 28, 62, 6);
-        ctx.fillStyle = u.hp > 0 ? color : '#575869';
-        ctx.fillRect(x - 31, y + 28, 62 * u.hp / u.max, 6);
-        text(ctx, u.name, x, y - 31, '#f2f5ff', '800 14px system-ui');
+  update(game, focus, dt) {
+    this.updateTiles(game, focus);
+    const players = game.state.players.filter((p) => p.world === focus.world);
+    for (const p of players) {
+      let pawn = this.pawns.get(p.id);
+      if (!pawn) {
+        const group = new THREE.Group(), char = game.char(p);
+        const tex = charTexture(char);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.tex, alphaTest: 0.07, depthWrite: false }));
+        sprite.center.set(0.5, 0);
+        group.add(sprite);
+        const baseMat = new THREE.MeshBasicMaterial({ color: p.color, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(this.auraGeometry, baseMat);
+        ring.scale.setScalar(this.unit * 0.8);
+        group.add(ring);
+        const label = tag(char.name, 'board-pawn-label', group);
+        label.element.style.setProperty('--pawn', p.color);
+        group.position.copy(this.points[p.tile]);
+        this.group.add(group);
+        pawn = { group, sprite, tex, baseMat, label };
+        this.pawns.set(p.id, pawn);
       }
+      const same = players.filter((q) => q.tile === p.tile);
+      const offset = (same.indexOf(p) - (same.length - 1) / 2) * this.unit * 1.36;
+      pawn.group.position.lerp(dummy.position.copy(this.points[p.tile]).add(new THREE.Vector3(offset, this.unit * 0.23, 0)), Math.min(1, dt * 15));
+      const size = this.unit * (p.id === focus.id ? 2.7 : 2.15);
+      pawn.sprite.scale.set(size * Math.min(1.65, pawn.tex.aspect), size, 1);
+      pawn.label.position.y = size * 1.03;
+      pawn.label.element.classList.toggle('active', p.id === focus.id);
     }
-    if (time < p.battleStart) text(ctx, '戦闘開始まで ' + (p.battleStart - time).toFixed(1) + '秒', 500, 625, '#ffe487', '800 22px system-ui');
-    else text(ctx, '残り ' + Math.max(0, Math.ceil(28 - b.sec)) + '秒', 500, 625, '#b7c7e4', '800 21px system-ui');
+    for (const [id, pawn] of this.pawns) if (!players.some((p) => p.id === id)) this.removePawn(id, pawn);
+
+    // 地形と地面を共用し、魔物戦の両軍を止まったマスの上に配置する。
+    const key = focus.battle ? focus.id + focus.battleStart : null;
+    if (key !== (this.arena?.key ?? null)) {
+      this.clearArena();
+      if (key) {
+        const group = new THREE.Group(), center = this.points[focus.tile].clone();
+        group.position.copy(center);
+        this.group.add(group);
+        const g = new THREE.DodecahedronGeometry(this.unit * 0.68), units = [];
+        const lanes = [0, 1, 2].map((lane) => {
+          const floor = new THREE.Mesh(new THREE.BoxGeometry(this.unit * 12, 0.12, this.unit * 1.65), new THREE.MeshBasicMaterial({ color: '#263c57' }));
+          floor.position.set(0, this.unit * 1.4, (lane - 1) * this.unit * 1.8);
+          group.add(floor);
+          return floor;
+        });
+        for (const [team, tint] of [[focus.battle.allies, focus.color], [focus.battle.enemies, '#ff849a']]) {
+          for (const u of team) {
+            const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: tint }));
+            group.add(mesh);
+            const label = tag(u.name, 'board-pawn-label', mesh);
+            label.position.y = this.unit * 1.0;
+            units.push({ mesh, label, tint });
+          }
+        }
+        this.arena = { key, group, units, lanes };
+        this.frame(center);
+      } else this.frame();
+    }
+    if (this.arena) {
+      const b = focus.battle;
+      this.arena.lanes.forEach((lane, i) => lane.material.color.set(b.burst < 2 && i === b.lane ? '#b23660' : '#263c57'));
+      [...b.allies, ...b.enemies].forEach((u, i) => {
+        const { mesh, label, tint } = this.arena.units[i];
+        mesh.position.set((u.x / 100 - 0.5) * this.unit * 12, this.unit * 2.08, (u.lane - 1) * this.unit * 1.8);
+        mesh.material.color.set(u.hp <= 0 ? '#666579' : u.hit > 0 ? '#ffffff' : tint);
+        mesh.rotation.y += dt;
+        const name = u.name + ' ' + Math.round(100 * u.hp / u.max) + '%';
+        if (label.element.textContent !== name) label.element.textContent = name;
+      });
+    }
+  }
+
+  pick(ndc) {
+    this.ray.setFromCamera(ndc, this.view.camera);
+    const p = this.ray.ray.intersectPlane(new THREE.Plane(normal, -this.height), new THREE.Vector3());
+    if (!p) return null;
+    const best = this.options?.map((id) => [id, p.distanceTo(this.points[id])]).sort((a, b) => a[1] - b[1])[0];
+    return best && best[1] < this.unit * 1.8 ? best[0] : null;
+  }
+
+  removePawn(id, pawn) {
+    pawn.label.removeFromParent();
+    pawn.sprite.material.dispose();
+    pawn.baseMat.dispose();
+    pawn.group.removeFromParent();
+    this.pawns.delete(id);
+  }
+
+  clearArena() {
+    if (!this.arena) return;
+    const { group, units, lanes } = this.arena;
+    for (const { label, mesh } of units) { label.removeFromParent(); mesh.material.dispose(); }
+    units[0]?.mesh.geometry.dispose();
+    for (const floor of lanes) { floor.geometry.dispose(); floor.material.dispose(); }
+    group.removeFromParent();
+    this.arena = null;
+  }
+
+  dispose() {
+    this.clearArena();
+    for (const [id, pawn] of this.pawns) this.removePawn(id, pawn);
+    this.labels.clear();
+    this.group.removeFromParent();
+    this.auraGeometry.dispose();
+    this.auraMaterial.dispose();
+    for (const mesh of this.group.children.filter((o) => o.isInstancedMesh)) {
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+      mesh.dispose();
+    }
   }
 }

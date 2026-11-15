@@ -30,7 +30,7 @@ body.mobile #tab-board { color: #a4e9d4; }
   overscroll-behavior: contain;
 }
 #board-dialog:not([open]) { display: none; }
-#board-dialog::backdrop { background: #050815d6; backdrop-filter: blur(8px); }
+#board-dialog:has(.board-lobby) { z-index: 40; position: fixed; inset: 0; }
 #board-dialog:has(.board-lobby) { width: min(610px, calc(100vw - 38px)); }
 #board-dialog button, #board-dialog select, #board-dialog input {
   color: var(--board-ink);
@@ -90,11 +90,9 @@ body.mobile #tab-board { color: #a4e9d4; }
 .board-player strong { display: grid; align-items: center; justify-items: end; font-size: 10px; }
 .board-player strong span:first-child { color: #83eaf9; }
 .board-player strong span:last-child { color: #ffe083; }
-.board-map { position: relative; overflow: hidden; background: #101930; border: 1px solid var(--board-line); border-radius: 14px; }
-.board-map canvas { display: block; width: 100%; height: auto; aspect-ratio: 1000/680; cursor: default; }
 .board-challenge:empty { display: none; }
-.board-challenge { position: absolute; inset: 0; display: grid; place-items: center; background: #091121e9; }
-.board-mini { width: min(92%, 480px); text-align: center; padding: 10px; }
+.board-challenge { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.board-mini { width: min(90vw, 410px); text-align: center; padding: 16px; border: 1px solid #9bf4dc85; border-radius: 15px; background: #111e35f5; box-shadow: 0 12px 45px #0008; pointer-events: auto; }
 .board-mini h2 { font-size: clamp(18px, 3vw, 27px) !important; }
 .board-mini p { margin: 4px 0 7px !important; color: #c6d7ed; }
 .board-minitime { height: 5px; overflow: hidden; background: #30445f; border-radius: 5px; }
@@ -144,6 +142,92 @@ body.mobile #tab-board { color: #a4e9d4; }
   .board-status { min-height: 30px; }
   .board-miniplay { min-height: 84px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  #board-dialog::backdrop { backdrop-filter: none; }
+
+
+/* HUD と盤面を分け、地面へのクリックとカメラ操作を 3D 画面に渡す。 */
+body.board-active :is(#top, #wtitle, #events, #info, #help, #news, #caption, #toasts, #titlecard, #tabbar, #searchbox, #settings) {
+  display: none;
+}
+body.board-active #labels :is(.clabel, .bubble, .mon-label, .travel-label) { opacity: 0; }
+body.board-active #board-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  display: block;
+  width: 100vw;
+  max-height: 100dvh;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+  overflow: hidden;
+}
+body.board-active #board-dialog:not([open]) { display: none; }
+.board-active .board-head {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: 10px;
+  right: 10px;
+  padding: 9px 13px;
+  border: 1px solid var(--board-line);
+  border-radius: 13px;
+  background: #142038eb;
+  pointer-events: auto;
+}
+.board-active .board-head h1 { font-size: clamp(17px, 2.5vw, 24px) !important; }
+.board-active .board-body { display: contents; }
+.board-active .board-main {
+  position: absolute;
+  left: 10px;
+  right: min(35vw, 340px);
+  bottom: max(9px, env(safe-area-inset-bottom));
+  padding: 6px 8px;
+  background: #142038e8;
+  border: 1px solid var(--board-line);
+  border-radius: 12px;
+  pointer-events: auto;
+}
+.board-active .board-sidebar {
+  position: absolute;
+  width: min(32vw, 315px);
+  top: 84px;
+  right: 10px;
+  bottom: max(9px, env(safe-area-inset-bottom));
+  max-height: none;
+  overflow: auto;
+  pointer-events: auto;
+  overscroll-behavior: contain;
+}
+.board-active .board-status { min-height: 31px; }
+.board-map-label, .board-pawn-label {
+  pointer-events: none;
+  white-space: nowrap;
+  background: #102239db;
+  border: 1px solid #80c8e7;
+  border-radius: 99px;
+  color: #d4f8ff;
+  font: 800 11px/1.35 var(--font);
+  padding: 2px 6px;
+  box-shadow: 0 2px 6px #0014;
+}
+.board-map-label.tile { background: #0c2038de; border-color: #55888e80; padding: 1px 3px; font-size: 9px; }
+.board-map-label.branch { color: #171e2c; background: #ffe18f; border-color: #fff9d8; font-size: 13px; }
+.board-pawn-label { border-color: var(--pawn, #8faccc); color: #fff; }
+.board-pawn-label.active { background: var(--pawn); color: #14223c; }
+.board-lobby a { color: #aef1dd; }
+
+@media (max-width: 760px) {
+  .board-active .board-head { top: max(4px, env(safe-area-inset-top)); left: 4px; right: 4px; padding: 5px; }
+  .board-active .board-head-end { gap: 3px; }
+  #board-dialog .board-head-end button { font-size: 10px; padding: 5px; }
+  .board-active .board-head-end .board-network { display: none; }
+  .board-active .board-main { bottom: auto; top: calc(max(4px, env(safe-area-inset-top)) + 58px); left: 4px; right: 4px; padding: 4px; }
+  .board-active .board-players { padding-bottom: 1px; }
+  .board-active .board-status { min-height: 24px; padding-inline: 5px; font-size: 11px; }
+  .board-active .board-legend { display: none; }
+  .board-active .board-sidebar { top: auto; left: 4px; right: 4px; width: auto; bottom: max(4px, env(safe-area-inset-bottom)); max-height: 31dvh; padding: 3px; background: #101c30d8; border-radius: 12px; }
+  .board-active .board-card { padding: 7px; }
+  .board-mini { margin-bottom: 7vh; }
 }

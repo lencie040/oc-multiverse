@@ -1,4 +1,4 @@
-import { seeded, hashStr } from './util.js?v=52';
+import { seeded, hashStr } from './util.js?v=53';
 
 export const MAP_W = 1000;
 export const MAP_H = 680;

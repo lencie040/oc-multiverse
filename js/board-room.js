@@ -22,7 +22,7 @@ export class BoardRoom {
     if (!this.client) { this.onStatus('failed'); return; }
     this.profile = { char, world, since: Date.now() };
     this.absent = new Map();
-    this.lastTick = performance.now();
+    this.lastTick = this.startedAt = performance.now();
     this.lastState = 0;
     this.channel = this.client.channel('oc-sugoroku-v1-' + this.revision, {
       config: { presence: { key: this.id }, broadcast: { self: false } },
@@ -136,6 +136,7 @@ export class BoardRoom {
     const now = performance.now();
     const elapsed = Math.min(1.2, (now - this.lastTick) / 1000);
     this.lastTick = now;
+    if (!this.ready && now - this.startedAt > 15000) this.onStatus('failed');
     if (!this.subscribed) return;
     this.flushCommands();
     if (!this.isHost) {

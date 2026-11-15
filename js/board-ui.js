@@ -1,13 +1,13 @@
-import { escapeHtml } from './util.js?v=52';
-import { rankLabel } from './model.js?v=52';
-import { MOODS, moodOf } from './audio.js?v=52';
-import { MAP_W, MAP_H, TILES } from './board-map.js?v=52';
-import { canCarry, ITEMS } from './board-items.js?v=52';
-import { CRYSTAL_PRICE, BoardGame, levelCost } from './board-game.js?v=52';
-import { FORMATIONS, TECHS } from './board-battle.js?v=52';
-import { performance as scoreOf, targets } from './board-minigames.js?v=52';
-import { BoardDrawing } from './board-draw.js?v=52';
-import { BoardRoom } from './board-room.js?v=52';
+import { escapeHtml } from './util.js?v=53';
+import { rankLabel } from './model.js?v=53';
+import { MOODS, moodOf } from './audio.js?v=53';
+import { TILES } from './board-map.js?v=53';
+import { canCarry, ITEMS } from './board-items.js?v=53';
+import { CRYSTAL_PRICE, BoardGame, levelCost } from './board-game.js?v=53';
+import { FORMATIONS, TECHS } from './board-battle.js?v=53';
+import { performance as scoreOf, targets } from './board-minigames.js?v=53';
+import { BoardScene } from './board-draw.js?v=53';
+import { BoardRoom } from './board-room.js?v=53';
 
 const SAVE = 'oc-multiverse-sugoroku-v1';
 const E = escapeHtml;
@@ -27,7 +27,6 @@ export class BoardUI {
     this.dialog = document.getElementById('board-dialog');
     this.dialog.addEventListener('click', (e) => this.click(e));
     this.dialog.addEventListener('close', () => this.stop());
-    this.dialog.addEventListener('keydown', (e) => this.key(e));
     this.dialog.addEventListener('toggle', (e) => {
       if (e.target.isConnected && e.target.dataset?.keep === 'tech') this.techOpen = e.target.open;
     }, true);
@@ -35,6 +34,7 @@ export class BoardUI {
   }
 
   get openNow() { return this.dialog.open; }
+  get active() { return this.openNow && !!this.game; }
   get me() { return this.game?.player(this.room?.id ?? 'local'); }
   get time() {
     return this.game.time + (this.room && !this.room.isHost && this.room.ready
@@ -45,7 +45,7 @@ export class BoardUI {
     if (this.openNow) return;
     this.app.ui.setSheet(null);
     this.app.keys = {};
-    this.dialog.showModal();
+    this.dialog.show();
     this.lobby();
   }
 
@@ -70,12 +70,13 @@ export class BoardUI {
           </select></label>
         </div>
         <div class="board-lobby-actions">
-          <button class="board-primary" data-op="online"${disabled(!this.app.sync.sb)}>みんなで遊ぶ</button>
+          <button class="board-primary" data-op="online"${disabled(this.app.sync.manualSolo)}>みんなで遊ぶ</button>
           <button data-op="solo">CPUと遊ぶ</button>
           ${saved ? '<button data-op="resume">CPU戦の続き</button>' : ''}
         </div>
         <small>Lv1スタート ・ 世界線移動は Z 以上 ・ 世界団移動は ZZZ</small>
-        ${!this.app.sync.sb ? '<small>オンラインに接続できないため、CPU戦を利用できます。</small>' : ''}
+        ${this.app.sync.manualSolo ? '<small>ソロ表示です。オンラインで遊ぶには<a href="./">公開ページ</a>を開いてください。</small>'
+          : !this.app.sync.catalog.checkedAt ? '<small>保存済みデータと同じ版の参加者と接続します。</small>' : ''}
       </div>`;
   }
 
@@ -95,12 +96,11 @@ export class BoardUI {
     this.follow = null;
     this.exact = false;
     this.saveAt = 0;
-    this.openChallenge = null;
+    document.body.classList.add('board-active');
+    if (this.app.director?.on) this.app.director.toggle(false);
+    this.app.stopFollow();
     if (mode === 'online') {
       this.net = 'connecting';
-      this.room = new BoardRoom(this.game, this.app.sync.sb, this.app.sync.catalog.revision, (status) => {
-        if (status !== this.net) { this.net = status; this.refresh(); }
-      });
     } else {
       this.net = 'solo';
       if (mode !== 'resume' || !this.game.restore(this.saved()) || !this.me) {
@@ -114,17 +114,14 @@ export class BoardUI {
       <header class="board-head">
         <div><h1 id="board-title">すごろくRTS</h1><div class="board-world" data-region="world"></div></div>
         <div class="board-head-end"><span class="board-network" data-region="network"></span>
-          <button data-op="lobby">対戦メニュー</button>
+          <button data-op="frame">盤面を見渡す</button><button data-op="lobby">対戦メニュー</button>
           <button class="board-close" data-op="close" aria-label="観戦に戻る">×</button>
         </div>
       </header>
       <div class="board-body">
         <div class="board-main">
           <div data-region="players" class="board-players"></div>
-          <div class="board-map">
-            <canvas width="${MAP_W}" height="${MAP_H}" aria-label="世界線のすごろく盤面"></canvas>
-            <div data-region="challenge" class="board-challenge"></div>
-          </div>
+          <div data-region="challenge" class="board-challenge"></div>
           <div data-region="status" class="board-status"></div>
           <div class="board-legend">
             <span><i style="--tile:#469aff"></i>＋3</span><span><i style="--tile:#f26877"></i>−3</span>
@@ -147,16 +144,31 @@ export class BoardUI {
         </aside>
       </div>`;
     this.regions = Object.fromEntries([...this.dialog.querySelectorAll('[data-region]')].map((el) => [el.dataset.region, el]));
-    const canvas = this.dialog.querySelector('canvas');
-    this.drawing = new BoardDrawing(canvas);
-    canvas.addEventListener('click', (e) => this.mapClick(e));
-    this.room?.start(char, world);
+    if (mode === 'online') this.connectRoom(char, world);
     this.refresh();
+  }
+
+  async connectRoom(char, world) {
+    const game = this.game;
+    try {
+      const client = await this.app.sync.connect();
+      if (this.game !== game || !this.openNow) return;
+      this.room = new BoardRoom(game, client, this.app.sync.catalog.revision, (status) => {
+        if (this.game === game && status !== this.net) { this.net = status; this.refresh(); }
+      });
+      this.room.start(char, world);
+    } catch (error) {
+      console.warn('すごろくのオンライン接続:', error);
+      if (this.game === game) { this.net = 'failed'; this.refresh(); }
+    }
   }
 
   stop() {
     this.persist();
     this.room?.stop();
+    this.scene?.dispose();
+    this.scene = null;
+    document.body.classList.remove('board-active');
     this.room = null;
     this.game = null;
     this.net = null;
@@ -167,7 +179,15 @@ export class BoardUI {
     if (!this.openNow || !this.game) return;
     if (!this.room && !document.hidden) this.game.update(dt);
     const p = this.game.player(this.follow) ?? this.me;
-    if (p) this.drawing.draw(this.game, p, this.time);
+    if (p) {
+      if (this.app.view.worldId !== p.world) this.app.openWorld(p.world);
+      if (this.scene?.view !== this.app.view) {
+        this.scene?.dispose();
+        this.scene = new BoardScene(this.app.view, this.game.board(p.world));
+        this.scene.frame();
+      }
+      this.scene.update(this.game, p, dt);
+    }
     this.paintIn = (this.paintIn ?? 0) - dt;
     if (this.paintIn > 0) return;
     this.paintIn = 0.08;
@@ -185,7 +205,7 @@ export class BoardUI {
     const netName = { online: '● オンライン', solo: '● CPU対戦', connecting: '接続中…', failed: '接続できません', reconnect: '再接続中…' };
     network.textContent = netName[this.net] ?? '';
     if (!me) {
-      updateHtml(controls, this.net === 'failed' ? '<p>オンラインに接続できません。「対戦メニュー」から戻れます。</p>' : '<p>盤面を準備しています…</p>');
+      updateHtml(controls, this.net === 'failed' ? '<p>オンライン接続に失敗しました。通信環境を確認し、対戦メニューからもう一度接続してください。</p>' : '<p>盤面を準備しています…</p>');
       return;
     }
     const focus = this.game.player(this.follow) ?? me;
@@ -205,13 +225,6 @@ export class BoardUI {
     updateHtml(challenge, this.challenge(focus));
     const duel = this.game.state.duels.find((d) => d.id === focus.duel);
     const minigame = duel?.game ?? focus.mini?.game;
-    const activeChallenge = minigame ? minigame.seed : focus.battle ? focus.battleStart : null;
-    if (activeChallenge !== this.openChallenge) {
-      this.openChallenge = activeChallenge;
-      if (activeChallenge != null && focus === me && matchMedia('(max-width: 850px)').matches) {
-        challenge.parentElement.scrollIntoView({ block: 'nearest' });
-      }
-    }
     if (minigame) {
       const remaining = Math.max(0, minigame.limit - Math.max(0, this.time - minigame.start));
       challenge.querySelector('.board-minitime i').style.width = (100 * remaining / minigame.limit) + '%';
@@ -238,7 +251,8 @@ export class BoardUI {
         <div class="board-buttons">${[1, 3, 5, 10, 20, max].filter((v, i, a) => v <= max && a.indexOf(v) === i).map((v) => `<button data-op="stake" data-value="${v}" data-token="${d.id}">${v}</button>`).join('')}</div>
         <label class="board-stake">好きな額 <input type="number" min="1" max="${max}" value="${Math.min(5, max)}"><button data-op="own-stake" data-token="${d.id}">賭ける</button></label></section>`;
     }
-    if (p.battle) return `<section class="board-card"><h2>部隊の指示</h2><div class="board-buttons">
+    if (p.battle) return `<section class="board-card"><h2>部隊の指示</h2>
+      <p>${p.battle.burst < 2 ? ['上段', '中央', '下段'][p.battle.lane] + 'に大技が来る！' : '前衛・術士・援護が交戦中'}</p><div class="board-buttons">
       ${Object.entries(FORMATIONS).map(([id, [name, desc]]) => `<button class="${id === p.battle.stance ? 'on' : ''}" data-op="stance" data-value="${id}" title="${desc}">${name}</button>`).join('')}</div>
       <p>${FORMATIONS[p.battle.stance][1]}</p>
       <div class="board-buttons">${p.techs.map((id) => `<button data-op="cast" data-value="${id}"${disabled(p.battle.tech > 0 || this.time < p.battleStart)}>${TECHS[id].name}</button>`).join('')}</div>
@@ -344,6 +358,7 @@ export class BoardUI {
     const { op, value, token } = b.dataset;
     if (op === 'close') return this.dialog.close();
     if (op === 'lobby') return this.lobby();
+    if (op === 'frame') return this.scene?.frame();
     if (['online', 'solo', 'resume'].includes(op)) return this.start(op);
     this.techOpen = !!this.dialog.querySelector('[data-keep="tech"]')?.open;
     if (op === 'follow') { this.follow = value || null; return this.refresh(); }
@@ -363,15 +378,12 @@ export class BoardUI {
     }
   }
 
-  mapClick(e) {
+  mapClick(ndc) {
     const p = this.me, o = p?.offer;
-    if (!o || o.kind !== 'branch' || (this.follow && this.follow !== p.id)) return;
-    const box = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - box.left) * MAP_W / box.width, y = (e.clientY - box.top) * MAP_H / box.height;
-    const best = o.data.map((id) => {
-      const t = this.game.board(p.world).tiles[id];
-      return [id, Math.hypot(x - t.x, y - t.y)];
-    }).sort((a, b) => a[1] - b[1])[0];
-    if (best[1] <= 28) this.action('path', best[0], o.token);
+    if (!o || o.kind !== 'branch' || (this.follow && this.follow !== p.id)) return false;
+    const id = this.scene?.pick(ndc);
+    if (id == null || !o.data.includes(id)) return false;
+    this.action('path', id, o.token);
+    return true;
   }
 }

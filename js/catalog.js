@@ -1,4 +1,4 @@
-import { hashStr } from './util.js?v=52';
+import { hashStr } from './util.js?v=53';
 
 const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1v2nMhZftw4EIEVcpOMluSK8nlz62roy7OMkh23AyvE4/gviz/tq';
 const CACHE_NAME = 'oc-multiverse-catalog';
@@ -56,11 +56,12 @@ const usableKey = (key) => key && !Object.hasOwn(Object.prototype, key);
 
 async function fetchCatalog() {
   const checkedAt = Date.now();
-  const signal = AbortSignal.timeout(5000);
+  const ctl = new AbortController();
+  const timeout = setTimeout(() => ctl.abort(), 8000);
   const [worldRows, charRows] = await Promise.all([
-    fetchRows('457238230', WORLD_FIELDS, signal),
-    fetchRows('0', CHAR_FIELDS, signal),
-  ]);
+    fetchRows('457238230', WORLD_FIELDS, ctl.signal),
+    fetchRows('0', CHAR_FIELDS, ctl.signal),
+  ]).finally(() => { clearTimeout(timeout); ctl.abort(); });
   const worlds = new Map();
   for (const row of worldRows) {
     const { 汎異記号: id, 世界線名: label, 読み方: yomi, 世界団名: dan } = row;
@@ -164,7 +165,7 @@ function mergeCatalog(base, rows) {
 }
 
 export async function loadGameData() {
-  const bundled = fetch('data/data.json?v=52', { cache: 'force-cache' }).then((res) => {
+  const bundled = fetch('data/data.json?v=53', { cache: 'force-cache' }).then((res) => {
     if (!res.ok) throw new Error(`同梱データを取得できません (${res.status})`);
     return res.json();
   });
