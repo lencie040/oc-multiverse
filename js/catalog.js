@@ -1,4 +1,4 @@
-import { hashStr } from './util.js?v=51';
+import { hashStr } from './util.js?v=52';
 
 const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1v2nMhZftw4EIEVcpOMluSK8nlz62roy7OMkh23AyvE4/gviz/tq';
 const CACHE_NAME = 'oc-multiverse-catalog';
@@ -164,7 +164,7 @@ function mergeCatalog(base, rows) {
 }
 
 export async function loadGameData() {
-  const bundled = fetch('data/data.json?v=51', { cache: 'force-cache' }).then((res) => {
+  const bundled = fetch('data/data.json?v=52', { cache: 'force-cache' }).then((res) => {
     if (!res.ok) throw new Error(`同梱データを取得できません (${res.status})`);
     return res.json();
   });

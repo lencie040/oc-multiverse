@@ -1,10 +1,9 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=51';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=51';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=51';
-import { loadBattleData } from './battle.js?v=51';
-import { RPG } from './rpg.js?v=51';
-import { Control } from './control.js?v=51';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=52';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt, OBSERVER_LEVEL, WORLD_RANK, DAN_RANK } from './model.js?v=52';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=52';
+import { loadBattleData } from './battle.js?v=52';
+import { RPG } from './rpg.js?v=52';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -51,7 +50,7 @@ const CONTESTS = [
 const BUSY = ['raid', 'defend', 'dig', 'party', 'meet', 'contest', 'watch', 'fight', 'battle', 'portal', 'ask', 'sleep', 'camp'];
 const RAID_RATE = 0.00015;
 // 移動pt: 1日にたまる量 (ランク7は2日で1pt)。3日分までためられる
-export const PT_RATE = { 7: 0.5, 8: 3, 9: 7, 10: 15, 11: 40 };
+const PT_RATE = { 9: 7, 10: 15, 11: 40 };
 const HORDE_RATE = 0.00004; // 魔物の大群の出現率 (昼のみ)
 const LEGEND = ['海賊王の黄金', '始まりの羅針盤', '時を刻む砂時計', '虹色の王冠', '星降る宝玉', '千年樹の種', '幻の金貨', '世界線の鍵'];
 export const TRANSIT = '@transit'; // 移動中のキャラの world
@@ -65,13 +64,12 @@ const EMOTES = {
 const FRIEND = 10, BEST = 25; // 友達・親友になる友好度 // 1ゲーム分あたりの出現率 (昼のみ)
 
 // 保存・同期するキャラの項目 (同期では吹き出しと絵文字も送る)
-const SAVE_KEYS = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins', 'lv', 'exp', 'coins', 'items', 'held', 'food', 'hungry', 'ability', 'ctrl', 'sleptKey', 'flags', 'downUntil', 'tower'];
+const SAVE_KEYS = ['world', 'x', 'z', 'dest', 'walking', 'state', 'pts', 'halvedDay', 'partyLeader', 'party', 'trip', 'meals', 'work', 'act', 'kills', 'downs', 'travels', 'trainDay', 'treasures', 'raidWins', 'transit', 'friends', 'bdayParty', 'contestWins', 'coins', 'items', 'held', 'ability', 'flags', 'downUntil', 'tower'];
 const SYNC_KEYS = [...SAVE_KEYS, 'bubble', 'emote'];
 // 普段の行動の長さ (現実の時間で、ずっと同じことをして見えないよう短めにする)
 const ACT_SCALE = 0.15;
 const SCALED_KINDS = new Set(['idle', 'train', 'explore', 'visit', 'help', 'chat']);
 const WALK_SPEED = 90; // 1分あたりの移動距離 (現実と同じ時間の流れで、歩く様子が見える速さ)
-const PLAYER_WALK = 8; // 操作中のキャラの歩く速さの倍率 (島を十数秒で横切れる)
 const MAX_EVENTS = 500;
 
 export class Sim {
@@ -81,11 +79,9 @@ export class Sim {
     loadBattleData(model.types.types, model.moves, model.chars);
     this.learned = new Map(); // キャラごとの覚えている技
     this.oddsCache = new Map();
-    this.live = new Map(); // 手動の戦闘
     this.fights = [];
     this.pending = []; // 少し後に起きること (戦闘の決着など)
     this.nextFightId = 1;
-    this.lvMedian = 1;
     this.t = nowGameT();
     this.lastMorning = -1;
     this.events = [];
@@ -141,7 +137,7 @@ export class Sim {
       bubble: null, kills: 0, downs: 0, travels: 0, log: [],
       trainDay: -1, treasures: 0, raidWins: 0, transit: null, friends: {}, emote: null,
       bdayParty: -1, contestWins: 0,
-      lv: 1, exp: 0, coins: 100, items: {}, held: null, food: 7, hungry: 0, ability: null, ctrl: null, sleptKey: -1, flags: {}, downUntil: null, tower: {},
+      lv: OBSERVER_LEVEL, coins: 100, items: {}, held: null, food: Infinity, ability: null, flags: {}, downUntil: null, tower: {},
     });
     c.types = splitTypes(c.type);
     const bd = /(\d+)月(\d+)日/.exec(c.birthday || '');
@@ -292,8 +288,6 @@ export class Sim {
       this.runPending();
       for (const c of this.m.chars) this.updateChar(c, step);
       this.updateFights();
-      const hour = Math.floor(this.t / 60);
-      if (hour !== this.lastHour) { this.lastHour = hour; this.updateLevels(); this.expireControl(); }
     }
     this.effects = this.effects.filter((e) => this.t - e.t < 3);
   }
@@ -316,8 +310,6 @@ export class Sim {
     this.daily = this.newDaily();
     for (const c of this.m.chars) {
       c.pts = Math.min(this.ptCap(c), c.pts + this.ptRate(c));
-      this.morningFood(c);
-      this.morningSleep(c);
       if (c.state === 'down' && !c.transit && c.downUntil == null) {
         c.state = 'ok';
         c.act = { cat: 'daily', label: '目を覚ました', until: this.t + rand(5, 30), kind: 'idle' };
@@ -335,8 +327,6 @@ export class Sim {
     if (c.transit) return this.stepTransit(c);
     if (c.bubble && this.t > c.bubble.until) c.bubble = null;
     if (c.state === 'down') { if (c.downUntil != null && this.t >= c.downUntil) this.recover(c); return; }
-    // 夕方から朝までに少しでも寝ていれば、その夜は寝たことにする (野宿も含む)
-    if ((c.state === 'sleep' || c.state === 'camp') && (this.hour >= 18 || this.hour < 6)) c.sleptKey = this.nightKey();
     if (c.partyLeader) return this.followLeader(c, dt);
     if (c.act.kind === 'defend') return this.defendStep(c, dt);
     if (c.walking) {
@@ -351,12 +341,9 @@ export class Sim {
       }
       return;
     }
-    if (c.act.cat === 'work' && this.playerHolds(c)) this.workPay(c, dt);
     if (this.t >= c.act.until) {
       this.onDone(c);
       if (c.state === 'down' || c.walking || this.t < c.act.until) return;
-      if (this.playerHolds(c)) { c.act = { cat: 'daily', label: '待機中', until: Infinity, kind: 'idle' }; return; }
-      if (c.ctrl?.home) return this.stepHome(c);
       this.decide(c);
     }
   }
@@ -414,7 +401,7 @@ export class Sim {
       a.kind = 'fight';
       a.until = Infinity;
       const done = (r) => { a.res = r; a.until = this.t + (r.sec || 0); };
-      const r = this.fight(c, [this.monsterUnit(mo)], { world: c.world, x: mo.x, z: mo.z, mon: mo.id }, done);
+      const r = this.fight(c, [this.monsterUnit(mo)], { world: c.world, x: mo.x, z: mo.z, mon: mo.id });
       if (r) done(r);
     }
     if (a.kind === 'danGate') return this.danJump(c, a.data.homeward, a.data.to);
@@ -450,7 +437,6 @@ export class Sim {
     const a = c.act;
     if (c.state === 'sleep' || c.state === 'camp') c.state = 'ok';
     if (a.kind === 'fight') this.resolveBattle(c, a.data, a.res);
-    this.actReward(c, a);
     if (a.kind === 'train') { c.trainDay = this.day; this.emote(c, '🔥'); }
     if (a.kind === 'explore') this.rollTreasure(c);
     if (a.kind === 'dig') this.resolveDig(c, a.data);
@@ -500,7 +486,10 @@ export class Sim {
     }
     const meal = this.dueMeal(c);
     if (meal) return this.doMeal(c, meal, home);
-    if (this.npcShopping(c, geo) !== false) return;
+    if (geo.tower && c.rank >= WORLD_RANK && h >= 9 && h < 16 && chance(0.007)) {
+      if (!this.goTower(c, 'lemon')) return;
+    }
+    if (this.npcShopping(c) !== false) return;
 
     if (c.pts >= 1 && h >= 8 && h < 15 && !this.isBirthday(c) && chance(c.rank >= 9 ? 0.12 : 0.06)) {
       if (this.startTrip(c)) return;
@@ -670,11 +659,11 @@ export class Sim {
       c.act.label = '大群と交戦中！';
       c.act.fightUntil = Infinity;
       const act = c.act, done = (r) => { act.res = r; act.fightUntil = this.t + Math.max(r.sec || 0, 0.02); };
-      const r = this.fight(c, [this.monsterUnit(mo)], { world: c.world, x: mo.x, z: mo.z, mon: mo.id }, done);
+      const r = this.fight(c, [this.monsterUnit(mo)], { world: c.world, x: mo.x, z: mo.z, mon: mo.id });
       if (r) done(r);
     } else if (mo.engagedBy && mo.engagedBy !== c.id && Math.sqrt(dist2(c.x, c.z, mo.x, mo.z)) < 2) c.act.target = null;
   }
-  walkSpeed(c) { return WALK_SPEED * (c.ctrl ? PLAYER_WALK : c.trip ? 1.4 : 1); }
+  walkSpeed(c) { return WALK_SPEED * (c.trip ? 1.4 : 1); }
   stepToward(c, x, z, dt) {
     const d = Math.sqrt(dist2(c.x, c.z, x, z));
     const s = this.walkSpeed(c) * dt;
@@ -1111,7 +1100,6 @@ export class Sim {
       for (const id of ids) {
         const c = this.m.charById.get(id);
         c.kills++; c.raidWins++;
-        this.gainExp(c, this.killExp({ lv: r.lv, boss: true, base: 90 }) * 3);
         c.coins += 200 + r.lv * 20;
         this.say(c, pick(['やったー！！', '勝った！', 'みんなのおかげ！']));
         this.emote(c, '🎉');
@@ -1235,7 +1223,6 @@ export class Sim {
   }
   knockDown(p) {
     // 操作中のキャラは、朝まで待たずに家へ戻され、少しの間だけ動けなくなる
-    if (p.ctrl) return this.playerDown(p);
     p.state = 'down';
     p.walking = false;
     p.downs++;
@@ -1245,13 +1232,13 @@ export class Sim {
 
   // ---------- 冒険 (世界線・世界団の移動) ----------
   // ---------- 移動pt ----------
-  // PT_RATE はLv1の量。レベルが上がるほど増え、Lv300ならランク1でも上限が120ptになる
-  ptRate(c) { return (PT_RATE[Math.min(c.rank, 11)] || 0) + (40 * (c.lv - 1)) / 299; }
+  ptRate(c) { return PT_RATE[Math.min(c.rank, DAN_RANK)] || 0; }
+  partyCanTravel(c, rank) { return this.partyOf(c).every((member) => member.rank >= rank); }
   ptCap(c) { return this.ptRate(c) * 3; }
   partySize(c) { return 1 + c.party.length; }
   // 仲間を連れていくと人数分のptがかかる
   hopPrice(c, a, b) { return hopCost(this.m.worlds, a, b) * this.partySize(c); }
-  canHop(c, to) { return c.world !== to && this.m.worlds.get(c.world).neighbors.includes(to) && c.pts >= this.hopPrice(c, c.world, to) && this.safeHop(c, to); }
+  canHop(c, to) { return this.partyCanTravel(c, WORLD_RANK) && c.world !== to && this.m.worlds.get(c.world).neighbors.includes(to) && c.pts >= this.hopPrice(c, c.world, to) && this.safeHop(c, to); }
   routeCost(c, from, to) {
     if (this.m.worlds.get(from).dan !== this.m.worlds.get(to).dan) return Infinity;
     const r = cheapestPath(this.m.worlds, from, to);
@@ -1267,9 +1254,10 @@ export class Sim {
   // 世界団の移動は世界線の果てからだけ
   atEdge(c) { return c.world === this.danOf(c).edge; }
   edgeOf(danId) { return this.m.danById.get(danId).edge; }
-  canDan(c, toDan) { return this.atEdge(c) && this.danOf(c).neighbors.includes(toDan) && c.pts >= this.danPrice(c, toDan) && this.safeDan(c, toDan); }
+  canDan(c, toDan) { return this.partyCanTravel(c, DAN_RANK) && this.atEdge(c) && this.danOf(c).neighbors.includes(toDan) && c.pts >= this.danPrice(c, toDan) && this.safeDan(c, toDan); }
   // 果てまでの道のりも含めて、行ける世界団
   affordableDans(c) {
+    if (!this.partyCanTravel(c, DAN_RANK)) return [];
     const edge = this.danOf(c).edge, walk = c.world === edge ? 0 : this.routeCost(c, c.world, edge);
     return this.danOf(c).neighbors.filter((d) => c.pts >= walk + this.danPrice(c, d) && this.safeDan(c, d));
   }
@@ -1296,7 +1284,7 @@ export class Sim {
     if (!dan && !w.neighbors.some((nb) => this.canHop(c, nb))) return false;
     c.trip = { mode: dan ? 'dan' : chance(0.6) ? 'trip' : 'far', hops: dan ? 0 : randInt(1, 3), hopsDone: 0, acts: 0, goingHome: false, campOk: false, visited: [c.world] };
     c.party = [];
-    this.recruit(c, dan ? Math.min(...dans.map((d) => this.danPrice(c, d))) : 2);
+    this.recruit(c, dan ? Math.min(...dans.map((d) => this.danPrice(c, d))) : 2, dan ? DAN_RANK : WORLD_RANK);
     if (!dan) {
       // 仲間を含めて払えるかを確認し、往復できなければ片道の遠出にする
       const able = w.neighbors.filter((nb) => this.safeHop(c, nb));
@@ -1312,11 +1300,11 @@ export class Sim {
   }
 
   // 同じ汎異記号の仲間を、ptに余裕がある分だけ (1人あたり unit pt) 連れていく
-  recruit(c, unit) {
+  recruit(c, unit, rank = WORLD_RANK) {
     const slots = Math.min(3, Math.max(0, Math.floor(c.pts / unit) - 1));
     if (!slots || chance(0.3)) return;
     const mates = this.local(c.world).filter((o) => o !== c && o.hani === c.hani && o.world === c.world && o.state === 'ok'
-      && !o.partyLeader && !o.trip && !o.party.length && o.act.kind === 'idle');
+      && o.rank >= rank && !o.partyLeader && !o.trip && !o.party.length && o.act.kind === 'idle');
     for (const o of mates.sort(() => Math.random() - 0.5).slice(0, randInt(1, slots))) {
       o.partyLeader = c.id;
       o.walking = false;
@@ -1447,6 +1435,7 @@ export class Sim {
 
   // ポータルに入ると世界団マップ上を実際に飛んで隣の世界線へ向かう
   crossPortal(c, to) {
+    if (!this.canHop(c, to)) { c.act.kind = 'idle'; return; }
     const from = c.world;
     const cost = this.hopPrice(c, from, to);
     c.pts = Math.max(0, c.pts - cost);
@@ -1663,7 +1652,7 @@ export class Sim {
     const keys = SAVE_KEYS;
     return {
       v: 2, t: this.t, lastMorning: this.lastMorning, nextMonsterId: this.nextMonsterId,
-      raids: this.raids, nextRaidId: this.nextRaidId, hordes: this.hordes, races: this.races, repair: this.repair, nextEventId: this.nextEventId, nextFightId: this.nextFightId, lvMedian: this.lvMedian,
+      raids: this.raids, nextRaidId: this.nextRaidId, hordes: this.hordes, races: this.races, repair: this.repair, nextEventId: this.nextEventId, nextFightId: this.nextFightId,
       parties: this.parties, meets: this.meets, contests: this.contests, clock: 'real', daily: this.daily, report: this.report,
       monsters: Object.fromEntries(this.monsters),
       events: this.events.slice(-200),
@@ -1678,8 +1667,6 @@ export class Sim {
     return o;
   }
   applyChar(c, d) {
-    // 手元でWASD移動しているキャラは手元の位置を優先する (大きくずれた時だけホストに合わせる)
-    if (c.id === this.driving && c.walking && d.world === c.world && dist2(c.x, c.z, d.x, d.z) < 100) d = { ...d, x: c.x, z: c.z, dest: c.dest, walking: true };
     Object.assign(c, d);
     if (c.act && (c.act.until === 'INF' || c.act.until === null)) c.act.until = Infinity;
   }
@@ -1687,7 +1674,7 @@ export class Sim {
     return {
       lastMorning: this.lastMorning, nextMonsterId: this.nextMonsterId, nextRaidId: this.nextRaidId, nextEventId: this.nextEventId,
       raids: this.raids, hordes: this.hordes, races: this.races, repair: this.repair, parties: this.parties, meets: this.meets, contests: this.contests,
-      daily: this.daily, report: this.report, effects: this.effects, fights: this.fights, lvMedian: this.lvMedian,
+      daily: this.daily, report: this.report, effects: this.effects, fights: this.fights,
     };
   }
   applyWorld(w) { Object.assign(this, w); }
@@ -1766,22 +1753,27 @@ export class Sim {
     this.repair = s.repair || {};
     this.nextEventId = s.nextEventId || 1;
     this.nextFightId = s.nextFightId || 1;
-    this.lvMedian = s.lvMedian || 1;
     this.report = s.report || null;
     for (const c of this.m.chars) {
       const d = map.get(c.id);
       if (!d) continue;
-      Object.assign(c, d);
+      for (const key of SAVE_KEYS) if (Object.hasOwn(d, key)) c[key] = d[key];
       if (!map.has(c.partyLeader)) c.partyLeader = null;
-      c.party = c.party.filter((id) => map.has(id));
+      c.party = c.party.filter((id) => map.has(id) && charById.get(id).rank >= WORLD_RANK);
       const transit = c.transit ?? map.get(c.partyLeader)?.transit;
-      const lostLocation = c.world === TRANSIT ? !canRestoreTransit(transit) : !worlds.has(c.world);
+      const destination = c.world === TRANSIT ? transit?.to : c.world;
+      const rankNeeded = worlds.get(destination)?.dan !== c.dan || transit?.kind === 'dan' ? DAN_RANK : WORLD_RANK;
+      const lostLocation = (c.world === TRANSIT ? !canRestoreTransit(transit) : !worlds.has(c.world))
+        || (c.world !== c.home && c.rank < rankNeeded);
       if (lostLocation) {
         const home = worlds.get(c.home).geo.homes[c.id];
-        Object.assign(c, { world: c.home, x: home.x, z: home.z, dest: null, transit: null, trip: null, state: 'ok', downUntil: null });
+        Object.assign(c, { world: c.home, x: home.x, z: home.z, dest: null, transit: null, trip: null, state: 'ok', downUntil: null, partyLeader: null });
       }
       const act = c.act;
-      if (lostLocation || (!c.partyLeader && act.kind === 'follow')
+      const wasControlled = d.ctrl && !c.transit && !c.partyLeader && c.state === 'ok';
+      const wasHungry = c.state === 'down' && (d.starveDay != null || act.label?.includes('空腹で倒れ'));
+      if (wasHungry) { c.state = 'ok'; c.downUntil = null; }
+      if (lostLocation || wasControlled || wasHungry || (!c.partyLeader && act.kind === 'follow')
         || (act.kind === 'portal' && !worlds.get(c.world)?.neighbors.includes(act.data))
         || (activities[act.kind] && !activities[act.kind].some((e) => e.id === act.data))) {
         c.walking = false;
@@ -1789,13 +1781,12 @@ export class Sim {
       }
       if (c.act && c.act.until === 'INF') c.act.until = Infinity;
       if (c.act && c.act.until === null) c.act.until = Infinity;
-      if (typeof c.pts !== 'number') c.pts = this.ptRate(c);
+      c.pts = Number.isFinite(c.pts) ? Math.min(this.ptCap(c), Math.max(0, c.pts)) : this.ptRate(c);
       delete c.movesLeft; delete c.lastDan;
       c.bdayParty ??= -1; c.contestWins ??= 0;
       c.trainDay ??= -1; c.treasures ??= 0; c.raidWins ??= 0; c.transit ??= null; c.friends ??= {};
       // 以前の版の項目を今の形に直す
       c.tower ??= {};
-      if (c.starveDay != null) { delete c.starveDay; c.state = 'ok'; c.food = 5; c.hungry = 0; c.act = { cat: 'daily', label: '目を覚ました', until: this.t, kind: 'idle' }; }
       for (const o of c.orders || []) this.addItem(c, o.id, o.n);
       delete c.orders;
       if (c.act?.kind === 'tower') { c.act.kind = 'idle'; c.act.until = this.t; }
@@ -1804,7 +1795,14 @@ export class Sim {
       if (c.act?.kind === 'fight') { c.act.kind = 'idle'; c.act.until = this.t; }
       c.log = this.events.filter((e) => e.ids.includes(c.id)).slice(-30);
     }
+    for (const c of this.m.chars) {
+      c.party = c.party.filter((id) => charById.get(id).partyLeader === c.id);
+    }
+    for (const c of this.m.chars) {
+      if (c.partyLeader && !charById.get(c.partyLeader).party.includes(c.id)) c.partyLeader = null;
+      if (c.world === TRANSIT && !this.transitOf(c)) this.sendHome(c);
+    }
     return true;
   }
 }
-Object.assign(Sim.prototype, RPG, Control);
+Object.assign(Sim.prototype, RPG);

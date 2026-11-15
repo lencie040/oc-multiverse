@@ -59,9 +59,6 @@ export class Sync {
     this.ch.on('presence', { event: 'sync' }, () => this.elect());
     this.ch.on('broadcast', { event: 'delta' }, ({ payload }) => this.receive(payload));
     this.ch.on('broadcast', { event: 'hello' }, () => { if (this.role === 'host') this.resetSent(); });
-    this.ch.on('broadcast', { event: 'cmd' }, ({ payload: p }) => {
-      if (this.role === 'host' && p.revision === this.catalog.revision) this.runCommand(p.tok, p.cid, p.op, p.a);
-    });
     this.ch.subscribe(async (status) => {
       if (status !== 'SUBSCRIBED') return;
       await this.ch.track({ since: this.since, v: APP_V, phone: PHONE, ...this.catalog });
@@ -111,17 +108,6 @@ export class Sync {
   }
 
   get running() { return this.role === 'solo' || this.role === 'host'; }
-
-  // キャラ操作の命令: ホストが実行し、結果はすぐ全員へ送る
-  runCommand(tok, cid, op, a) {
-    this.app.sim.command(tok, cid, op, a);
-    // WASD移動は細かく届くので、全員への送信は0.5秒に1回まで
-    this.lastDelta = a?.drive ? Math.min(this.lastDelta, Date.now() - DELTA_EVERY + 500) : 0;
-  }
-  command(tok, cid, op, a) {
-    if (this.running) this.runCommand(tok, cid, op, a);
-    else this.ch?.send({ type: 'broadcast', event: 'cmd', payload: { tok, cid, op, a, revision: this.catalog.revision } });
-  }
 
   tick() {
     if (this.role !== 'host') return;

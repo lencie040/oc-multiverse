@@ -1,8 +1,9 @@
 // 画面まわり (パンくず・時計・検索・出来事・情報パネル)
-import { CATS } from './sim.js?v=51';
-import { prioOf } from './director.js?v=51';
-import { fmtTime, escapeHtml, colorOf, luminance, ultraUp, isPhone } from './util.js?v=51';
-import { typeSummary, TYPE_COLOR } from './types.js?v=51';
+import { CATS } from './sim.js?v=52';
+import { prioOf } from './director.js?v=52';
+import { fmtTime, escapeHtml, colorOf, luminance, ultraUp, isPhone } from './util.js?v=52';
+import { rankLabel, DAN_RANK } from './model.js?v=52';
+import { typeSummary, TYPE_COLOR } from './types.js?v=52';
 
 const $ = (s) => document.querySelector(s);
 const STAT_NAMES = ['H', 'A', 'B', 'C', 'D', 'S'];
@@ -38,7 +39,7 @@ export class UI {
     this.syncPhone();
     $('#tabbar').addEventListener('click', (e) => {
       const b = e.target.closest('button');
-      if (!b) return;
+      if (!b || b.id === 'tab-board') return;
       if (b.dataset.sheet) this.setSheet(b.dataset.sheet);
       else app.director.toggle();
     });
@@ -97,7 +98,6 @@ export class UI {
       if (el.dataset.act === 'close') return app.selectChar(null);
       if (el.dataset.act === 'follow') return app.toggleFollow();
       if (el.dataset.act === 'oshi') return app.toggleOshi(app.selected);
-      if (el.dataset.act === 'claim') return app.play.claim(app.selected);
       if (el.dataset.c) return app.selectChar(el.dataset.c, { focus: true });
       if (el.dataset.w) return app.openWorld(el.dataset.w);
       if (el.dataset.dan) return app.openDan(el.dataset.dan);
@@ -160,7 +160,7 @@ export class UI {
   setSheet(name, keep = false) {
     if (!this.phone) return;
     this.sheet = !keep && this.sheet === name ? null : name;
-    for (const s of ['events', 'info', 'settings', 'search', 'play']) document.body.classList.toggle('sheet-' + s, this.sheet === s);
+    for (const s of ['events', 'info', 'settings', 'search']) document.body.classList.toggle('sheet-' + s, this.sheet === s);
     $('#settings').hidden = this.sheet !== 'settings';
     for (const b of document.querySelectorAll('#tabbar [data-sheet]')) b.classList.toggle('on', b.dataset.sheet === this.sheet);
     if (this.sheet === 'search') $('#search').focus();
@@ -608,24 +608,23 @@ export class UI {
     const party = c.partyLeader ? [model.charById.get(c.partyLeader)] : c.party.map((id) => model.charById.get(id));
     const rate = sim.ptRate(c);
     const curDan = model.worlds.get(c.world)?.dan;
-    const danNext = curDan ? model.danById.get(curDan).neighbors.map((d) => `${escapeHtml(d)}へ ${sim.danPrice(c, d)}pt${sim.canDan(c, d) ? '（行ける）' : ''}`).join(' ・ ') : '移動中';
+    const danNext = c.rank < DAN_RANK ? 'ZZZから' : curDan ? model.danById.get(curDan).neighbors.map((d) => `${escapeHtml(d)}へ ${sim.danPrice(c, d)}pt${sim.canDan(c, d) ? '（行ける）' : ''}`).join(' ・ ') : '移動中';
     const ts = typeSummary(c.types);
     const tchip = (t) => `<b class="tchip" style="background:${TYPE_COLOR[t] || '#888'}">${escapeHtml(t)}</b>`;
     const bd = c.birthday ? `${escapeHtml(c.birthday)}${sim.isBirthday(c) ? ' 🎂 今日が誕生日！' : ''}` : '';
     const moves = rate ? `${sim.fmtPt(c.pts)}pt ／ 上限${sim.fmtPt(sim.ptCap(c))}pt（1日+${sim.fmtPt(rate)}pt）`
-      : c.partyLeader ? 'リーダーと同行中' : 'ptがたまらない（ランク7未満）';
+      : c.partyLeader ? 'リーダーと同行中' : '世界線移動はZから';
     return `<button class="close" data-act="close" title="閉じる (Esc)">×</button>`
       + `<div class="avatar">${avatar}</div>`
       + `<h2>${sim.isBirthday(c) ? '🎂 ' : ''}${escapeHtml(c.name)}</h2><div class="sub">${escapeHtml(c.yomi)} ・ No.${escapeHtml(c.id)}</div>`
       + `<div class="btns"><button class="btn ${following ? 'on' : ''}" data-act="follow">🎥 ${following ? '追跡中' : '追跡する'}${this.phone ? '' : ' (T)'}</button>`
       + `<button class="btn ${settings.oshi.includes(c.id) ? 'on' : ''}" data-act="oshi">⭐ ${settings.oshi.includes(c.id) ? '推し' : '推しにする'}</button>`
-      + (c.ctrl ? `<button class="btn" disabled>🎮 ${c.ctrl.owner === this.app.play.who ? '操作中' : '誰かが操作中'}</button>` : `<button class="btn" data-act="claim">🎮 操作する</button>`)
       + (this.app.view.worldId !== c.world || sim.transitOf(c) ? `<button class="btn" data-c="${escapeHtml(c.id)}">📍 いる場所へ</button>` : '') + `</div>`
       + `<h3>いま</h3><div class="row" style="cursor:default"><i class="ico" style="background:${CATS[d.cat]?.color}">${d.icon}</i>${escapeHtml(d.text)}</div>`
       + `<div class="kv"><span>現在地</span><span>${this.whereChip(c, true)}${sim.transitOf(c) ? '（移動中）' : c.world !== c.home ? '（旅行中）' : '（家）'}</span>`
       + `<span>所属世界線</span><span>${this.wchip(c.home, true)} ${escapeHtml(c.hani)}</span><span>世界団</span><span>${escapeHtml(home.dan)}</span>`
-      + `<span>ランク</span><span>${c.rank}</span><span>レベル</span><span>${c.lv}（次まで ${sim.expNeed(c.lv) - c.exp}）</span>`
-      + `<span>コイン</span><span>${c.coins}</span><span>食料</span><span>${c.food}${c.hungry ? `（空腹${c.hungry}日目）` : ''}</span>`
+      + `<span>ランク</span><span>${rankLabel(c.rank)}</span><span>レベル</span><span>${c.lv}</span>`
+      + `<span>コイン</span><span>${c.coins}</span><span>食料</span><span>∞</span>`
       + `<span>戦闘力</span><span>${pw}${c.halvedDay === sim.day ? '（今日は半減中）' : ''}${c.trainDay === sim.day ? '（修行で1割増し）' : ''}</span>`
       + `<span>移動pt</span><span>${moves}</span><span>世界団移動</span><span>${danNext}</span>`
       + (party.length ? `<span>${c.partyLeader ? 'リーダー' : '仲間'}</span><span>${party.map((p) => escapeHtml(p.name)).join('、')}</span>` : '')

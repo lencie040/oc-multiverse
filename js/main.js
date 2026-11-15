@@ -1,16 +1,16 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=51';
-import { Sim } from './sim.js?v=51';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=51';
-import { UI } from './ui.js?v=51';
-import { Director } from './director.js?v=51';
-import { Play } from './play.js?v=51';
-import { Sound, moodOf, danMoodOf } from './audio.js?v=51';
-import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=51';
-import { Sync } from './sync.js?v=51';
-import { PostFX } from './fx.js?v=51';
-import { loadGameData } from './catalog.js?v=51';
+import { buildModel } from './model.js?v=52';
+import { Sim } from './sim.js?v=52';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=52';
+import { UI } from './ui.js?v=52';
+import { Director } from './director.js?v=52';
+import { BoardUI } from './board-ui.js?v=52';
+import { Sound, moodOf, danMoodOf } from './audio.js?v=52';
+import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=52';
+import { Sync } from './sync.js?v=52';
+import { PostFX } from './fx.js?v=52';
+import { loadGameData } from './catalog.js?v=52';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
@@ -71,7 +71,7 @@ class App {
 
     this.ui = new UI(this);
     this.director = new Director(this);
-    this.play = new Play(this);
+    this.board = new BoardUI(this);
     this.bindInput();
     this.route();
     addEventListener('hashchange', () => this.route(true));
@@ -261,7 +261,7 @@ class App {
       if (!tap) return;
       const hit = this.view.click(ndc(e)) || (touch && NEAR_TAP.some(([x, y]) => this.view.click(ndc({ clientX: e.clientX + x, clientY: e.clientY + y }))));
       if (hit) this.sound.play('click');
-      else if (!this.play.tapGround(ndc(e))) this.ui.setSheet(null); // 何もない所をタップしたらシートを閉じる
+      else this.ui.setSheet(null); // 何もない所をタップしたらシートを閉じる
     });
     el.addEventListener('pointercancel', (e) => { lift(e); down = null; });
     el.addEventListener('pointermove', (e) => {
@@ -277,13 +277,12 @@ class App {
       this.view.resize();
     });
     addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT') return;
+      if (this.board.openNow || e.target.tagName === 'INPUT') return;
       this.keys[e.code] = true;
       if (this.director.on && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Escape'].includes(e.code)) this.director.toggle(false);
       if (e.code === 'Escape') { if (this.selected) this.selectChar(null); else this.goUp(); }
       else if (e.code === 'Slash') { e.preventDefault(); document.getElementById('search').focus(); }
       else if (e.code === 'KeyT') this.toggleFollow();
-      else if (e.code === 'KeyG') this.play.setDrive(!this.play.drive);
       else if (e.code === 'KeyO') this.director.toggle();
       else if (e.code === 'KeyM') this.ui.toggleMute();
       else if (e.code === 'KeyH') document.body.classList.toggle('nopanels');
@@ -295,6 +294,12 @@ class App {
 
   // 今見ている場所に合わせて曲を変える (世界線ごとに別のメロディ、レイド中はバトル曲)
   updateMusic() {
+    if (this.board.openNow && this.board.me) {
+      const p = this.board.game.player(this.board.follow) ?? this.board.me;
+      const w = this.model.worlds.get(p.world);
+      this.sound.setMood(p.battle ? 'battle' : moodOf(w), false, 'board:' + w.id);
+      return;
+    }
     const v = this.view;
     // 宇宙から観戦中は、映している世界線の曲を流す (移動を映している間は直前の曲のまま)
     if (!this.spaceWatch) this.musicWorld = null;
@@ -328,11 +333,15 @@ class App {
     else if (gap > MIN_PER_DAY / 2) this.sim.catchUp();
     else if (gap > 1) { this.sim.quiet = true; this.sim.update(Math.min(gap, 30)); this.sim.quiet = false; }
     else if (gap > 0) this.sim.update(gap);
+    this.sync.tick();
+    if (this.board.openNow) {
+      this.board.tick(dt);
+      this.updateMusic();
+      return;
+    }
     this.view.update(dt);
     this.ui.tick(dt);
-    this.play.tick(dt);
     this.director.tick();
-    this.sync.tick();
     this.updateMusic();
     this.view.postUpdate(dt);
     // 大きな出来事のカメラの揺れ
