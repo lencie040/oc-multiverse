@@ -1,8 +1,8 @@
 // キャラ操作の画面: 操作パネルと手動の戦闘
-import { escapeHtml } from './util.js?v=50';
-import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=50';
-import { TOWERS, TOP_FLOOR, floorName, floorStats, floorCoins } from './tower.js?v=50';
-import { ownerHash } from './control.js?v=50';
+import { escapeHtml } from './util.js?v=51';
+import { ITEMS, SHOP_NAMES, sellPrice, onlineItems, onlinePrice } from './items.js?v=51';
+import { TOWERS, TOP_FLOOR, floorName, floorStats, floorCoins } from './tower.js?v=51';
+import { ownerHash } from './control.js?v=51';
 
 const $ = (s) => document.querySelector(s);
 const TOKEN_KEY = 'oc-multiverse-player';

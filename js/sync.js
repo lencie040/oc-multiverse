@@ -21,8 +21,9 @@ const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout((
 const monKey = (list) => JSON.stringify(list.map((m) => [m.id, m.tx, m.tz, m.power, m.engagedBy, m.dead, m.horde]));
 
 export class Sync {
-  constructor(app) {
+  constructor(app, catalog) {
     this.app = app;
+    this.catalog = catalog;
     this.id = Math.random().toString(36).slice(2, 10);
     this.since = Date.now();
     this.role = 'solo'; // solo: 同期なし / wait: 誰がホストか確認中 / host / viewer
@@ -37,7 +38,7 @@ export class Sync {
   async load() {
     // ?solo を付けると同期せずに動く (表示の確認用。みんなの世界に影響しない)
     // 手元の確認用サーバーは、公開前の版がみんなの世界を上書きしないよう必ず同期しない
-    if (new URLSearchParams(location.search).has('solo') || ['localhost', '127.0.0.1'].includes(location.hostname)) return undefined;
+    if (!this.catalog.checkedAt || new URLSearchParams(location.search).has('solo') || ['localhost', '127.0.0.1'].includes(location.hostname)) return undefined;
     try {
       const { createClient } = await timeout(import(LIB), 8000);
       this.sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
@@ -58,10 +59,12 @@ export class Sync {
     this.ch.on('presence', { event: 'sync' }, () => this.elect());
     this.ch.on('broadcast', { event: 'delta' }, ({ payload }) => this.receive(payload));
     this.ch.on('broadcast', { event: 'hello' }, () => { if (this.role === 'host') this.resetSent(); });
-    this.ch.on('broadcast', { event: 'cmd' }, ({ payload: p }) => { if (this.role === 'host') this.runCommand(p.tok, p.cid, p.op, p.a); });
+    this.ch.on('broadcast', { event: 'cmd' }, ({ payload: p }) => {
+      if (this.role === 'host' && p.revision === this.catalog.revision) this.runCommand(p.tok, p.cid, p.op, p.a);
+    });
     this.ch.subscribe(async (status) => {
       if (status !== 'SUBSCRIBED') return;
-      await this.ch.track({ since: this.since, v: APP_V, phone: PHONE });
+      await this.ch.track({ since: this.since, v: APP_V, phone: PHONE, ...this.catalog });
       // 少し待ってもほかに誰もいなければ自分がホスト
       setTimeout(() => this.elect(), 1500);
     });
@@ -72,7 +75,7 @@ export class Sync {
   elect() {
     if (!this.ch) return;
     const st = this.ch.presenceState();
-    const members = Object.entries(st).map(([id, metas]) => ({ id, since: metas[0]?.since ?? Infinity, v: metas[0]?.v ?? 0, phone: metas[0]?.phone ?? 0 }));
+    const members = Object.entries(st).map(([id, [m]]) => ({ id, since: m?.since ?? Infinity, v: m?.v ?? 0, phone: m?.phone ?? 0, revision: m?.revision, checkedAt: m?.checkedAt ?? 0 }));
     if (!members.some((m) => m.id === this.id)) return;
     // 新しい版の人がいたら読み込み直す。読み込み直しても版が変わらない時 (公開が反映される前など) はくり返さない
     const newest = Math.max(...members.map((m) => m.v));
@@ -81,9 +84,16 @@ export class Sync {
       location.reload();
       return;
     }
-    this.viewers = members.length;
-    members.sort((a, b) => b.v - a.v || a.phone - b.phone || a.since - b.since || (a.id < b.id ? -1 : 1));
-    this.setRole(members[0].id === this.id ? 'host' : 'viewer');
+    // シートの版が違う画面同士では、キャラや移動先の ID が一致しない。
+    const latest = members.reduce((a, b) => (b.v > a.v || (b.v === a.v && b.checkedAt > a.checkedAt)) ? b : a);
+    const compatible = members.filter((m) => m.v === latest.v && m.revision === latest.revision);
+    this.viewers = compatible.length;
+    compatible.sort((a, b) => a.phone - b.phone || a.since - b.since || (a.id < b.id ? -1 : 1));
+    this.setRole(compatible[0].id === this.id ? 'host' : 'viewer');
+    if (latest.v === APP_V && latest.revision !== this.catalog.revision && sessionStorage.getItem('oc-reloaded-catalog') !== String(latest.revision)) {
+      sessionStorage.setItem('oc-reloaded-catalog', String(latest.revision));
+      location.reload();
+    }
   }
 
   setRole(r) {
@@ -110,7 +120,7 @@ export class Sync {
   }
   command(tok, cid, op, a) {
     if (this.running) this.runCommand(tok, cid, op, a);
-    else this.ch?.send({ type: 'broadcast', event: 'cmd', payload: { tok, cid, op, a } });
+    else this.ch?.send({ type: 'broadcast', event: 'cmd', payload: { tok, cid, op, a, revision: this.catalog.revision } });
   }
 
   tick() {
@@ -155,7 +165,7 @@ export class Sync {
     let batch = [], size = 0;
     const flush = () => {
       if (!batch.length) return;
-      this.ch.send({ type: 'broadcast', event: 'delta', payload: { t: sim.t, v: APP_V, parts: pack(batch) } });
+      this.ch.send({ type: 'broadcast', event: 'delta', payload: { t: sim.t, v: APP_V, revision: this.catalog.revision, parts: pack(batch) } });
       batch = []; size = 0;
     };
     for (const p of parts) {
@@ -166,9 +176,9 @@ export class Sync {
     flush();
   }
 
-  receive({ parts, v = 0 }) {
+  receive({ parts, v = 0, revision }) {
     if (this.role !== 'viewer' && this.role !== 'wait') return;
-    if (v < APP_V) return; // 古い版のホストからの状態は使わない
+    if (v !== APP_V || revision !== this.catalog.revision) return;
     const { sim, model } = this.app;
     for (const p of parts) {
       if (p[0] === 'world') sim.applyWorld(p[1]);

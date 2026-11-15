@@ -1,10 +1,10 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=50';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=50';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=50';
-import { loadBattleData } from './battle.js?v=50';
-import { RPG } from './rpg.js?v=50';
-import { Control } from './control.js?v=50';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=51';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt } from './model.js?v=51';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=51';
+import { loadBattleData } from './battle.js?v=51';
+import { RPG } from './rpg.js?v=51';
+import { Control } from './control.js?v=51';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -887,6 +887,7 @@ export class Sim {
   }
   factionMembers(name, world, max = Infinity) {
     const f = this.factions.find((x) => x.name === name);
+    if (!f) return [];
     return f.members.map((id) => this.m.charById.get(id)).filter((c) => c.world === world && this.free(c))
       .sort((a, b) => b.rank - a.rank).slice(0, max);
   }
@@ -1732,27 +1733,36 @@ export class Sim {
   restore(s) {
     if (!s || s.v !== 2) return false; // 版が違えば世界を作り直す
     // キャラや世界線を増やしても世界を消さないよう、合う人だけ引き継ぐ。保存にない新キャラは最初の状態のまま
-    const map = new Map(s.chars.filter(([id, d]) => this.m.charById.has(id) && (this.m.worlds.has(d.world) || d.world === TRANSIT)));
+    const { worlds, charById } = this.m;
+    const map = new Map(s.chars.filter(([id]) => charById.has(id)));
     if (!map.size) return false;
+    const keepEvent = (...fields) => (e) => worlds.has(e.world) && fields.every((field) => (e[field] ?? []).every((id) => map.has(id)));
+    const canRestoreTransit = (tr) => !!tr && worlds.has(tr.from) && worlds.has(tr.to);
     this.t = s.t; this.lastMorning = s.lastMorning; this.nextMonsterId = s.nextMonsterId;
-    for (const [wid, list] of Object.entries(s.monsters)) {
-      const w = this.m.worlds.get(wid);
-      if (!w) continue;
-      this.monsters.set(wid, list.slice(0, this.monsterCap(w) * 3));
+    for (const w of worlds.values()) {
+      if (Object.hasOwn(s.monsters, w.id)) {
+        const list = s.monsters[w.id].slice(0, this.monsterCap(w) * 3);
+        for (const mo of list) mo.type ??= monsterType(w);
+        this.monsters.set(w.id, list);
+      } else {
+        // 新しい世界線の魔物は、保存済みの ID と重ならないように生成する。
+        this.monsters.set(w.id, []);
+        for (let i = 0; i < Math.round(this.monsterCap(w) * 0.6); i++) this.spawnMonster(w);
+      }
     }
     this.events = s.events || [];
-    this.raids = (s.raids || []).filter((r) => this.m.worlds.has(r.world));
+    this.raids = (s.raids || []).filter(keepEvent('participants', 'helpers'));
     this.nextRaidId = s.nextRaidId || 1;
     this.daily = s.daily || this.newDaily();
     this.daily.raidsFled ??= [];
     for (const k of ['hordesWon', 'hordesLost', 'racesWon', 'birthdays', 'contests']) this.daily[k] ??= [];
     this.daily.meets ??= 0;
-    this.parties = (s.parties || []).filter((p) => this.m.worlds.has(p.world));
-    this.meets = (s.meets || []).filter((p) => this.m.worlds.has(p.world));
-    this.contests = (s.contests || []).filter((p) => this.m.worlds.has(p.world));
-    for (const [wid, list] of this.monsters) for (const mo of list) mo.type ??= monsterType(this.m.worlds.get(wid));
-    this.hordes = (s.hordes || []).filter((h) => this.m.worlds.has(h.world));
-    this.races = (s.races || []).filter((r) => this.m.worlds.has(r.world));
+    this.parties = (s.parties || []).filter(keepEvent('hosts', 'guests'));
+    this.meets = (s.meets || []).filter(keepEvent('members'));
+    this.contests = (s.contests || []).filter(keepEvent('teamA', 'teamB', 'watchers'));
+    this.hordes = (s.hordes || []).filter(keepEvent('defenders'));
+    this.races = (s.races || []).filter(keepEvent('racers'));
+    const activities = { raid: this.raids, defend: this.hordes, party: this.parties, meet: this.meets, contest: this.contests, watch: this.contests, dig: this.races };
     this.repair = s.repair || {};
     this.nextEventId = s.nextEventId || 1;
     this.nextFightId = s.nextFightId || 1;
@@ -1762,6 +1772,21 @@ export class Sim {
       const d = map.get(c.id);
       if (!d) continue;
       Object.assign(c, d);
+      if (!map.has(c.partyLeader)) c.partyLeader = null;
+      c.party = c.party.filter((id) => map.has(id));
+      const transit = c.transit ?? map.get(c.partyLeader)?.transit;
+      const lostLocation = c.world === TRANSIT ? !canRestoreTransit(transit) : !worlds.has(c.world);
+      if (lostLocation) {
+        const home = worlds.get(c.home).geo.homes[c.id];
+        Object.assign(c, { world: c.home, x: home.x, z: home.z, dest: null, transit: null, trip: null, state: 'ok', downUntil: null });
+      }
+      const act = c.act;
+      if (lostLocation || (!c.partyLeader && act.kind === 'follow')
+        || (act.kind === 'portal' && !worlds.get(c.world)?.neighbors.includes(act.data))
+        || (activities[act.kind] && !activities[act.kind].some((e) => e.id === act.data))) {
+        c.walking = false;
+        c.act = { cat: 'daily', label: 'ひと休み', kind: 'idle', until: this.t };
+      }
       if (c.act && c.act.until === 'INF') c.act.until = Infinity;
       if (c.act && c.act.until === null) c.act.until = Infinity;
       if (typeof c.pts !== 'number') c.pts = this.ptRate(c);
