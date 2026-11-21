@@ -1,10 +1,10 @@
-import { danCost, hopCost, WORLD_RANK, DAN_RANK } from './model.js?v=53';
-import { moodOf } from './audio.js?v=53';
-import { pick, randInt, chance } from './util.js?v=53';
-import { CORE_ITEMS, ITEM_IDS, ITEMS, canCarry } from './board-items.js?v=53';
-import { TILES, makeBoard } from './board-map.js?v=53';
-import { FORMATIONS, TECHS, startSkirmish, updateSkirmish, castTech } from './board-battle.js?v=53';
-import { makeChallenge, newScore, pressChallenge, performance } from './board-minigames.js?v=53';
+import { danCost, hopCost, WORLD_RANK, DAN_RANK } from './model.js?v=54';
+import { moodOf } from './audio.js?v=54';
+import { pick, randInt, chance } from './util.js?v=54';
+import { CORE_ITEMS, ITEM_IDS, ITEMS, canCarry } from './board-items.js?v=54';
+import { TILES, makeBoard } from './board-map.js?v=54';
+import { FORMATIONS, TECHS, startSkirmish, updateSkirmish, castTech } from './board-battle.js?v=54';
+import { makeChallenge, newScore, pressChallenge, performance } from './board-minigames.js?v=54';
 
 export const CRYSTAL_PRICE = 20;
 export const PLAYER_COLORS = ['#ffe481', '#f08db4', '#91d5ff', '#c0a1ff', '#81e6ad', '#ffad82', '#b9b6ff', '#ddf696'];

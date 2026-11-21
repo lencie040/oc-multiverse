@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=53';
-import { themeOf } from './themes.js?v=53';
+import { seeded, hashStr } from './util.js?v=54';
+import { themeOf } from './themes.js?v=54';
 
 export const MAX_LEVEL = 300;
 export const OBSERVER_LEVEL = 50;
@@ -10,7 +10,7 @@ const RANKS = ['E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'Z', 'ZZ', 'ZZZ'];
 export const rankLabel = (rank) => RANKS[rank - 1] ?? '—';
 export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限
 // 世界線の果て: 世界団を移動できる場所 (世界団の id → 世界線の名前)。䥚以外はまだ仮
-export const EDGE_WORLDS = { 䥚: '憶界', 壞: '零界EX', '𢜤': '菓界SP', '𡻦': '氷界' };
+export const EDGE_WORLDS = { 䥚: '憶界', 壞: '零界EX', '𢜤': '菓界SP', '𡻦': '氷界', '𩜓': '幼界FR' };
 
 // そのレベルの実数値の合計 = 戦闘力 (種族値が高いほど、レベルが高いほど強い)
 export function powerAt(stats, lv) {
@@ -48,19 +48,37 @@ export function buildModel(raw) {
   return { worlds, chars, charById: new Map(chars.map((c) => [c.id, c])), dans, danById, types: raw.types, moves: raw.moves };
 }
 
-// 世界団の配置: しょ (シーズン1) は遠く離れた所に、シーズン2の世界団は一列に並ぶ。隣どうしだけ行き来できる
-const SEASON1 = new Set(['䥚']);
-export const DAN_GAP = 340, SEASON_GAP = 1300;
+// シーズン2は「かい」で「あい」側と「もし―しょく」側に分かれる。
+const DAN_POSITIONS = new Map([
+  ['䥚', { x: -1300, y: 80, z: 0 }],
+  ['壞', { x: 0, y: 0, z: 0 }],
+  ['𢜤', { x: 340, y: 30, z: -240 }],
+  ['𡻦', { x: 340, y: -25, z: 240 }],
+  ['𩜓', { x: 740, y: 15, z: 240 }],
+]);
+const DAN_ROUTES = [['䥚', '壞'], ['壞', '𢜤'], ['壞', '𡻦'], ['𡻦', '𩜓']];
+
 function layoutDans(dans) {
-  const s1 = dans.filter((d) => SEASON1.has(d.id)), s2 = dans.filter((d) => !SEASON1.has(d.id));
-  const left = -((s2.length - 1) / 2) * DAN_GAP;
-  s2.forEach((d, i) => { d.season = 2; d.pos = { x: left + i * DAN_GAP, y: Math.sin(i * 1.7) * 40, z: (i % 2 ? -1 : 1) * 70 }; });
-  s1.forEach((d, i) => { d.season = 1; d.pos = { x: left - SEASON_GAP, y: 80, z: 260 + i * DAN_GAP }; });
-  for (const d of dans) d.neighbors = [];
-  const link = (a, b) => { a.neighbors.push(b.id); b.neighbors.push(a.id); };
-  for (let i = 1; i < s2.length; i++) link(s2[i - 1], s2[i]);
-  for (let i = 1; i < s1.length; i++) link(s1[i - 1], s1[i]);
-  if (s1.length && s2.length) link(s1[s1.length - 1], s2[0]);
+  const byId = new Map(dans.map((d) => [d.id, d]));
+  const link = (a, b) => {
+    a.neighbors.push(b.id);
+    b.neighbors.push(a.id);
+  };
+  for (const d of dans) {
+    d.season = d.id === '䥚' ? 1 : 2;
+    d.pos = DAN_POSITIONS.get(d.id);
+    d.neighbors = [];
+  }
+  for (const [from, to] of DAN_ROUTES) {
+    if (byId.has(from) && byId.has(to)) link(byId.get(from), byId.get(to));
+  }
+  // スプレッドシートに増えた未配置の世界団は、既存の枝の先につなぐ。
+  let tail = [...DAN_POSITIONS.keys()].reverse().map((id) => byId.get(id)).find(Boolean);
+  for (const d of dans.filter((group) => !group.pos)) {
+    d.pos = { x: (tail?.pos.x ?? 0) + 400, y: 0, z: tail?.pos.z ?? 0 };
+    if (tail) link(tail, d);
+    tail = d;
+  }
 }
 // 世界団の移動に必要なpt (1人あたり): シーズンをまたぐと120pt、同じシーズンなら40pt
 export const danCost = (a, b) => (a.season !== b.season ? 120 : 40);

@@ -1,4 +1,4 @@
-import { hashStr } from './util.js?v=53';
+import { hashStr } from './util.js?v=54';
 
 const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1v2nMhZftw4EIEVcpOMluSK8nlz62roy7OMkh23AyvE4/gviz/tq';
 const CACHE_NAME = 'oc-multiverse-catalog';
@@ -164,17 +164,38 @@ function mergeCatalog(base, rows) {
   return { ...base, worlds: [...worlds.values()], chars: [...chars.values()], dans: [...dans.values()].filter((dan) => usedDans.has(dan.id)) };
 }
 
+async function loadPortraits() {
+  const ctl = new AbortController();
+  const timeout = setTimeout(() => ctl.abort(), 4000);
+  try {
+    const res = await fetch('data/portraits.json', { cache: 'no-cache', signal: ctl.signal });
+    if (!res.ok) return new Set();
+    const ids = await res.json();
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch (e) {
+    console.warn('イラスト一覧を取得できません:', e);
+    return new Set();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function loadGameData() {
-  const bundled = fetch('data/data.json?v=53', { cache: 'force-cache' }).then((res) => {
+  const bundled = fetch('data/data.json?v=54', { cache: 'force-cache' }).then((res) => {
     if (!res.ok) throw new Error(`同梱データを取得できません (${res.status})`);
     return res.json();
   });
   const remote = fetchCatalog().catch((e) => { console.warn('シートの取得に失敗しました:', e); return null; });
-  const [base, latest] = await Promise.all([bundled, remote]);
+  const [base, latest, portraits] = await Promise.all([bundled, remote, loadPortraits()]);
   const rows = await cachedRows(latest).catch((e) => {
     console.warn('データキャッシュにアクセスできません:', e);
     return latest?.rows ?? new Map();
   });
   const raw = mergeCatalog(base, rows);
-  return { raw, revision: hashStr(JSON.stringify(raw)), checkedAt: latest?.checkedAt ?? 0 };
+  // イラストだけの更新で、参加できるオンライン対戦の部屋が変わらないようにする。
+  const revision = hashStr(JSON.stringify(raw));
+  for (const c of raw.chars) {
+    if (portraits.has(c.id)) c.img = `img/${encodeURIComponent(c.id)}.png`;
+  }
+  return { raw, revision, checkedAt: latest?.checkedAt ?? 0 };
 }

@@ -1,0 +1,13 @@
+---
+layout: null
+---
+[
+{%- assign separator = '' -%}
+{%- for image in site.static_files -%}
+  {%- assign parts = image.path | split: '/' -%}
+  {%- if parts.size == 3 and parts[1] == 'img' and image.extname == '.png' -%}
+    {{ separator }}{{ image.basename | jsonify }}
+    {%- assign separator = ',' -%}
+  {%- endif -%}
+{%- endfor -%}
+]

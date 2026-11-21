@@ -1,9 +1,9 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=53';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt, OBSERVER_LEVEL, WORLD_RANK, DAN_RANK } from './model.js?v=53';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=53';
-import { loadBattleData } from './battle.js?v=53';
-import { RPG } from './rpg.js?v=53';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=54';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt, OBSERVER_LEVEL, WORLD_RANK, DAN_RANK } from './model.js?v=54';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=54';
+import { loadBattleData } from './battle.js?v=54';
+import { RPG } from './rpg.js?v=54';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
