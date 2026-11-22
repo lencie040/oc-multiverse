@@ -1,5 +1,5 @@
-import { MOODS } from './audio.js?v=55';
-import { seeded, hashStr, clamp } from './util.js?v=55';
+import { MOODS } from './audio.js?v=56';
+import { seeded, hashStr, clamp } from './util.js?v=56';
 
 const THEMES = {
   calm: ['街角の信号', '買い物メモ', '落とし物さがし', ['🍎', '🔑', '📘', '🏠', '☕', '🪙']],

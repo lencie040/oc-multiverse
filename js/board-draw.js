@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { MAP_W, MAP_H, TILES } from './board-map.js?v=55';
-import { charTexture } from './views.js?v=55';
+import { MAP_W, MAP_H, TILES } from './board-map.js?v=56';
+import { charTexture } from './views.js?v=56';
 
 const CYAN = '#81efff';
 const GOLD = '#ffe18f';

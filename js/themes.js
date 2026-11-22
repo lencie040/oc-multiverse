@@ -137,9 +137,10 @@ const cache = new Map();
 
 export function themeOf(world) {
   if (cache.has(world.id)) return cache.get(world.id);
-  let row = T[world.name];
+  const appearance = world.name === '幼界FR' ? '幼界IF' : world.name;
+  let row = T[appearance];
   if (!row) {
-    const m = world.name.match(/^(.+?)(EX|IF|SP)$/);
+    const m = appearance.match(/^(.+?)(EX|IF|SP)$/);
     if (m) row = variant(m[1], m[2]);
   }
   if (!row) row = ['#8fae7a', '#a8c8e8', 'tree:3,rock:2,bush:2', 'leaf', 'obelisk', '散歩'];
@@ -152,6 +153,7 @@ export function themeOf(world) {
     ground: row[0], sky: row[1], props, particle: row[3], landmark: row[4],
     hobbies: (row[5] || '').split(',').filter(Boolean),
     water: /pond|coral|seaweed|drop/.test(row[2]),
+    castle: appearance === '幼界IF',
   };
   cache.set(world.id, th);
   return th;
