@@ -1,13 +1,13 @@
-import { escapeHtml } from './util.js?v=54';
-import { rankLabel } from './model.js?v=54';
-import { MOODS, moodOf } from './audio.js?v=54';
-import { TILES } from './board-map.js?v=54';
-import { canCarry, ITEMS } from './board-items.js?v=54';
-import { CRYSTAL_PRICE, BoardGame, levelCost } from './board-game.js?v=54';
-import { FORMATIONS, TECHS } from './board-battle.js?v=54';
-import { performance as scoreOf, targets } from './board-minigames.js?v=54';
-import { BoardScene } from './board-draw.js?v=54';
-import { BoardRoom } from './board-room.js?v=54';
+import { escapeHtml } from './util.js?v=55';
+import { rankLabel } from './model.js?v=55';
+import { MOODS, moodOf } from './audio.js?v=55';
+import { TILES } from './board-map.js?v=55';
+import { canCarry, ITEMS } from './board-items.js?v=55';
+import { CRYSTAL_PRICE, BoardGame, levelCost } from './board-game.js?v=55';
+import { FORMATIONS, TECHS } from './board-battle.js?v=55';
+import { performance as scoreOf, targets } from './board-minigames.js?v=55';
+import { BoardScene } from './board-draw.js?v=55';
+import { BoardRoom } from './board-room.js?v=55';
 
 const SAVE = 'oc-multiverse-sugoroku-v1';
 const E = escapeHtml;
@@ -280,10 +280,10 @@ export class BoardUI {
         <div class="board-buttons">${action('crystal', '', '購入する', p.coins < price)}${skip}</div></section>`;
     }
     if (o.kind === 'gate') return `<section class="board-card"><h2>⟡ 移動ゲート</h2>
-      <div class="board-shop">${this.game.travelOptions(p).map(({ id, cost, kind, rank, allowed }) => {
+      <div class="board-shop">${this.game.travelOptions(p).map(({ id, cost, kind, rank, allowed, blocked }) => {
         const w = this.game.model.worlds.get(id);
         const title = kind === 'dan' ? '世界団 ' + w.dan + ' ・ ' + w.name : w.name;
-        return action('travel', id, `<b>${E(title)}</b><small>${rankLabel(rank)} 以上　◆ ${cost}pt</small>`, !allowed);
+        return action('travel', id, `<b>${E(title)}</b><small>${rankLabel(rank)} 以上　◆ ${cost}pt${blocked ? ' ・ 赤いノイズで通行止め' : ''}</small>`, !allowed);
       }).join('')}</div>${skip}</section>`;
     return `<section class="board-card"><h2>▣ ショップ</h2><div class="board-shop">
       ${(o.data ?? this.game.stocks(p.world, p.tile)).map((id) => {

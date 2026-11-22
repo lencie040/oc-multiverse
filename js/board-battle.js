@@ -1,5 +1,5 @@
-import { edge, monsterType, splitTypes } from './types.js?v=54';
-import { clamp } from './util.js?v=54';
+import { edge, monsterType, splitTypes } from './types.js?v=55';
+import { clamp } from './util.js?v=55';
 
 export const FORMATIONS = {
   push: ['前進', '攻撃距離まで詰める'],

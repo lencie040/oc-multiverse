@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=54';
-import { themeOf } from './themes.js?v=54';
+import { seeded, hashStr } from './util.js?v=55';
+import { themeOf } from './themes.js?v=55';
 
 export const MAX_LEVEL = 300;
 export const OBSERVER_LEVEL = 50;
@@ -10,7 +10,7 @@ const RANKS = ['E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'Z', 'ZZ', 'ZZZ'];
 export const rankLabel = (rank) => RANKS[rank - 1] ?? '—';
 export const MAX_DANGER = 40; // 魔物の強さ・多さに使う汎異記号の数字の上限
 // 世界線の果て: 世界団を移動できる場所 (世界団の id → 世界線の名前)。䥚以外はまだ仮
-export const EDGE_WORLDS = { 䥚: '憶界', 壞: '零界EX', '𢜤': '菓界SP', '𡻦': '氷界', '𩜓': '幼界FR' };
+export const EDGE_WORLDS = { 䥚: '憶界', 壞: '零界EX', '𢜤': '菓界SP', '𡻦': '氷界', '𩜓': '幼界FR', '𠀑': '天界i' };
 
 // そのレベルの実数値の合計 = 戦闘力 (種族値が高いほど、レベルが高いほど強い)
 export function powerAt(stats, lv) {
@@ -31,7 +31,7 @@ export function buildModel(raw) {
     c.home = c.hani;
     worlds.get(c.hani).residents.push(c.id);
   }
-  const dans = raw.dans.map((d, i) => ({ ...d, color: DAN_COLORS[i % DAN_COLORS.length], worlds: [] }));
+  const dans = raw.dans.map((d, i) => ({ ...d, yomi: d.yomi || (d.id === '𠀑' ? 'てん' : ''), color: DAN_COLORS[i % DAN_COLORS.length], worlds: [] }));
   const danById = new Map(dans.map((d) => [d.id, d]));
   for (const w of worlds.values()) danById.get(w.dan)?.worlds.push(w.id);
   for (const c of chars) c.dan = worlds.get(c.home).dan;
@@ -55,8 +55,15 @@ const DAN_POSITIONS = new Map([
   ['𢜤', { x: 340, y: 30, z: -240 }],
   ['𡻦', { x: 340, y: -25, z: 240 }],
   ['𩜓', { x: 740, y: 15, z: 240 }],
+  ['𠀑', { x: 650, y: 75, z: 850 }],
 ]);
 const DAN_ROUTES = [['䥚', '壞'], ['壞', '𢜤'], ['壞', '𡻦'], ['𡻦', '𩜓']];
+const BLOCKED_DAN_ROUTES = [{ from: '𡻦', to: '𠀑', cost: 80 }];
+
+function blockedDanRoute(from, to) {
+  return BLOCKED_DAN_ROUTES.find((route) =>
+    (route.from === from && route.to === to) || (route.from === to && route.to === from));
+}
 
 function layoutDans(dans) {
   const byId = new Map(dans.map((d) => [d.id, d]));
@@ -68,12 +75,16 @@ function layoutDans(dans) {
     d.season = d.id === '䥚' ? 1 : 2;
     d.pos = DAN_POSITIONS.get(d.id);
     d.neighbors = [];
+    d.blockedRoutes = BLOCKED_DAN_ROUTES.flatMap(({ from, to, cost }) => {
+      const destination = from === d.id ? to : to === d.id ? from : null;
+      return byId.has(destination) ? [{ id: destination, cost }] : [];
+    });
   }
   for (const [from, to] of DAN_ROUTES) {
     if (byId.has(from) && byId.has(to)) link(byId.get(from), byId.get(to));
   }
   // スプレッドシートに増えた未配置の世界団は、既存の枝の先につなぐ。
-  let tail = [...DAN_POSITIONS.keys()].reverse().map((id) => byId.get(id)).find(Boolean);
+  let tail = [...DAN_ROUTES.flat()].reverse().map((id) => byId.get(id)).find(Boolean);
   for (const d of dans.filter((group) => !group.pos)) {
     d.pos = { x: (tail?.pos.x ?? 0) + 400, y: 0, z: tail?.pos.z ?? 0 };
     if (tail) link(tail, d);
@@ -81,7 +92,7 @@ function layoutDans(dans) {
   }
 }
 // 世界団の移動に必要なpt (1人あたり): シーズンをまたぐと120pt、同じシーズンなら40pt
-export const danCost = (a, b) => (a.season !== b.season ? 120 : 40);
+export const danCost = (a, b) => blockedDanRoute(a.id, b.id)?.cost ?? (a.season !== b.season ? 120 : 40);
 
 // 汎異記号の1文字目が同じ世界線を近くに配置し、近いもの同士を「隣」にする
 const SPREAD = 3.5;

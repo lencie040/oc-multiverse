@@ -254,6 +254,7 @@ body.nopanels #events, body.nopanels #info { display: none; }
 .oshi-chip button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 14px; }
 .oshi-chip button:hover { color: var(--text); }
 .route-label { color: #c8d0ff; font-size: 12px; background: rgba(10, 14, 40, .7); border: 1px dashed rgba(160, 180, 255, .4); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+.route-label.blocked-route { color: #ffd0d5; border-color: #ff657c; background: rgba(60, 10, 26, .85); }
 
 /* 演出 */
 #warp { position: fixed; inset: 0; z-index: 7; pointer-events: none; display: none; }
@@ -371,7 +372,7 @@ body.mobile .paper .nums b { font-size: 15px; }
 body.mobile .paper .nums span { font-size: 9px; }
 body.mobile .dan-label b { font-size: 28px; }
 body.mobile .dan-label small { font-size: 11px; }
-body.mobile .dan-label span, body.mobile .route-label { display: none; }
+body.mobile .dan-label span, body.mobile .route-label:not(.blocked-route) { display: none; }
 body.mobile .letter-label { font-size: 26px; }
 body.mobile .mon-label { display: none; }
 body.mobile .travel-label { font-size: 10px; }

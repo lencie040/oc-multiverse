@@ -2,10 +2,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, buildCastle, buildLemonTowers, mat } from './props.js?v=54';
-import { TYPE_COLOR } from './types.js?v=54';
-import { TOWERS } from './tower.js?v=54';
-import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=54';
+import { buildProp, buildHouse, buildWorkplace, buildTent, buildPortal, buildMonster, buildRaidBoss, buildTreasureMark, buildCake, buildFlag, buildCastle, buildLemonTowers, mat } from './props.js?v=55';
+import { TYPE_COLOR } from './types.js?v=55';
+import { TOWERS } from './tower.js?v=55';
+import { SkyDome, Bursts, noiseTexture, cloudTexture, nebulaTexture, starLayer, spaceDust, atmosphere, planetMaterial, hazeMaterial, batchStatic } from './fx.js?v=55';
 
 // その場から動かない行動 (うろうろしない)
 const STAY_KINDS = new Set(['fight', 'defend', 'raid', 'dig', 'sleep', 'camp', 'contest', 'battle', 'portal']);
@@ -14,8 +14,8 @@ const AMBIENT = {
   daily: ['😋', '☕', '😌'], hobby: ['🎵', '✨', '😊'], work: ['💦', '🔨', '📦'], sabori: ['💤', '😪', '🎮'], social: ['💬', '😆', '🎶'],
   training: ['🔥', '💪'], shopping: ['🛍️', '😍'], explore: ['👀', '❓', '🧭'], help: ['👍', '😊'], event: ['🎉', '🎈', '🥳'],
 };
-import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, MIN_PER_DAY, ultraUp } from './util.js?v=54';
-import { CATS } from './sim.js?v=54';
+import { colorOf, luminance, FONT, clamp, escapeHtml, hashStr, seeded, MIN_PER_DAY, ultraUp } from './util.js?v=55';
+import { CATS } from './sim.js?v=55';
 
 // グラフィック設定 (低・中・高・超高・最高)
 const gfx = () => window.app?.settings?.gfx || 'high';
@@ -494,6 +494,12 @@ export class UniverseView extends BaseView {
     const lg = new THREE.BufferGeometry();
     lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
     this.scene.add(new THREE.LineSegments(lg, new THREE.LineDashedMaterial({ color: '#9fb0ff', transparent: true, opacity: 0.35, dashSize: 12, gapSize: 8 })).computeLineDistances());
+    this.routeNoise = [];
+    for (const d of model.dans) for (const { id, cost } of d.blockedRoutes) {
+      if (d.id >= id) continue;
+      const from = this.danPos.get(d.id).p, to = this.danPos.get(id).p;
+      this.addBlockedRoute(from, to, cost, seeded(hashStr(d.id + id)));
+    }
     const center = box.getCenter(new THREE.Vector3());
     const span = box.getSize(new THREE.Vector3()).length();
     this.camera.position.set(center.x, center.y + span * 0.55 * this.widen, center.z + span * 0.95 * this.widen);
@@ -504,8 +510,42 @@ export class UniverseView extends BaseView {
     this.controls.autoRotateSpeed = 0.25;
     this.bound = span;
   }
+  addBlockedRoute(from, to, cost, rng) {
+    const road = new THREE.BufferGeometry().setFromPoints([from, to]);
+    const roadMat = new THREE.LineDashedMaterial({ color: '#f24c63', dashSize: 13, gapSize: 9, transparent: true, opacity: 0.65 });
+    this.scene.add(new THREE.Line(road, roadMat).computeLineDistances());
+    const center = from.clone().lerp(to, 0.5);
+    const positions = [], colors = [];
+    const tint = new THREE.Color();
+    for (let i = 0; i < 560; i++) {
+      const radius = 36 * Math.cbrt(rng());
+      const phi = rng.range(0, Math.PI * 2), y = rng.range(-1, 1);
+      const flat = Math.sqrt(1 - y * y) * radius;
+      positions.push(Math.cos(phi) * flat * 1.45, y * radius, Math.sin(phi) * flat);
+      tint.setRGB(1, rng.range(0.015, 0.26), rng.range(0.02, 0.23));
+      colors.push(tint.r, tint.g, tint.b);
+    }
+    const cloud = new THREE.BufferGeometry();
+    cloud.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    cloud.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const cloudMat = new THREE.PointsMaterial({ size: 6, vertexColors: true, depthWrite: false, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+    const noise = new THREE.Points(cloud, cloudMat);
+    noise.position.copy(center);
+    this.scene.add(noise);
+    this.routeNoise.push(noise);
+    this.owned.push(road, roadMat, cloud, cloudMat);
+
+    const marker = label(`${cost}pt ・ 通行止め`, 'route-label blocked-route');
+    marker.position.copy(center).add(new THREE.Vector3(0, 53, 0));
+    this.scene.add(marker);
+  }
   update(dt) {
     const { model } = this.app;
+    for (const noise of this.routeNoise) {
+      noise.rotation.y += dt * 0.38;
+      noise.rotation.z -= dt * 0.19;
+      noise.material.opacity = 0.73 + 0.16 * Math.sin(noise.rotation.y * 38) * Math.sin(noise.rotation.y * 71);
+    }
     const danOf = (wid) => this.danPos.get(model.worlds.get(wid).dan);
     const a = new THREE.Vector3(), b = new THREE.Vector3();
     this.syncTravelers((tr, stage) => tr.kind === 'dan' && stage === 'space', (tr, f) => {

@@ -1,10 +1,10 @@
-import { danCost, hopCost, WORLD_RANK, DAN_RANK } from './model.js?v=54';
-import { moodOf } from './audio.js?v=54';
-import { pick, randInt, chance } from './util.js?v=54';
-import { CORE_ITEMS, ITEM_IDS, ITEMS, canCarry } from './board-items.js?v=54';
-import { TILES, makeBoard } from './board-map.js?v=54';
-import { FORMATIONS, TECHS, startSkirmish, updateSkirmish, castTech } from './board-battle.js?v=54';
-import { makeChallenge, newScore, pressChallenge, performance } from './board-minigames.js?v=54';
+import { danCost, hopCost, WORLD_RANK, DAN_RANK } from './model.js?v=55';
+import { moodOf } from './audio.js?v=55';
+import { pick, randInt, chance } from './util.js?v=55';
+import { CORE_ITEMS, ITEM_IDS, ITEMS, canCarry } from './board-items.js?v=55';
+import { TILES, makeBoard } from './board-map.js?v=55';
+import { FORMATIONS, TECHS, startSkirmish, updateSkirmish, castTech } from './board-battle.js?v=55';
+import { makeChallenge, newScore, pressChallenge, performance } from './board-minigames.js?v=55';
 
 export const CRYSTAL_PRICE = 20;
 export const PLAYER_COLORS = ['#ffe481', '#f08db4', '#91d5ff', '#c0a1ff', '#81e6ad', '#ffad82', '#b9b6ff', '#ddf696'];
@@ -122,11 +122,14 @@ export class BoardGame {
     const rank = this.char(p).rank;
     return [
       ...world.neighbors.map((id) => ({ id, kind: 'world', cost: hopCost(this.model.worlds, world.id, id), rank: WORLD_RANK })),
-      ...(group.edge === world.id ? group.neighbors.map((id) => {
-        const to = this.model.danById.get(id);
-        return { id: to.edge, kind: 'dan', cost: danCost(group, to), rank: DAN_RANK };
-      }) : []),
-    ].map((o) => ({ ...o, allowed: rank >= o.rank && p.crystals >= o.cost }));
+      ...(group.edge === world.id ? [
+        ...group.neighbors.map((id) => {
+          const to = this.model.danById.get(id);
+          return { id: to.edge, kind: 'dan', cost: danCost(group, to), rank: DAN_RANK };
+        }),
+        ...group.blockedRoutes.map(({ id, cost }) => ({ id: this.model.danById.get(id).edge, kind: 'dan', cost, rank: DAN_RANK, blocked: true })),
+      ] : []),
+    ].map((o) => ({ ...o, allowed: !o.blocked && rank >= o.rank && p.crystals >= o.cost }));
   }
 
   stocks(world, tile) {
