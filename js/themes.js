@@ -153,7 +153,6 @@ export function themeOf(world) {
     ground: row[0], sky: row[1], props, particle: row[3], landmark: row[4],
     hobbies: (row[5] || '').split(',').filter(Boolean),
     water: /pond|coral|seaweed|drop/.test(row[2]),
-    castle: appearance === '幼界IF',
   };
   cache.set(world.id, th);
   return th;

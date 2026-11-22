@@ -1,6 +1,6 @@
 // データ整形・世界団内の世界線配置・隣接関係・世界線内の地理
-import { seeded, hashStr } from './util.js?v=56';
-import { themeOf } from './themes.js?v=56';
+import { seeded, hashStr } from './util.js?v=57';
+import { themeOf } from './themes.js?v=57';
 
 export const MAX_LEVEL = 300;
 export const OBSERVER_LEVEL = 50;
@@ -196,7 +196,7 @@ function buildGeo(w, worlds) {
     taken.push({ ...edge, r: 8 });
   }
 
-  // 特別な建物: 現代のレモンタワー、幼界IFと幼界FRのフルリーア城。ポータルから離れた向きに置く
+  // 特別な建物: 現代のレモンタワー、幼界IFのフルリーア城。ポータルから離れた向きに置く
   const landmark = (rr, r) => {
     const gap = (a) => Math.min(...taken.slice(1).map((t) => Math.abs(Math.atan2(Math.sin(a - Math.atan2(t.z, t.x)), Math.cos(a - Math.atan2(t.z, t.x))))), Math.PI);
     let best = 0;
@@ -206,7 +206,7 @@ function buildGeo(w, worlds) {
     return p;
   };
   const tower = w.name === '現代' ? landmark(townR * 0.92, 15) : null;
-  const castle = w.theme.castle ? landmark(R * 0.56, 24) : null;
+  const castle = w.name === '幼界IF' ? landmark(R * 0.56, 24) : null;
 
   const works = [];
   const nWorks = Math.min(6, Math.max(1, Math.ceil(n / 12)));
