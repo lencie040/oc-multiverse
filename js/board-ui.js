@@ -1,13 +1,13 @@
-import { escapeHtml } from './util.js?v=57';
-import { rankLabel } from './model.js?v=57';
-import { MOODS, moodOf } from './audio.js?v=57';
-import { TILES } from './board-map.js?v=57';
-import { canCarry, ITEMS } from './board-items.js?v=57';
-import { CRYSTAL_PRICE, BoardGame, levelCost } from './board-game.js?v=57';
-import { FORMATIONS, TECHS } from './board-battle.js?v=57';
-import { performance as scoreOf, targets } from './board-minigames.js?v=57';
-import { BoardScene } from './board-draw.js?v=57';
-import { BoardRoom } from './board-room.js?v=57';
+import { escapeHtml } from './util.js?v=58';
+import { rankLabel } from './model.js?v=58';
+import { MOODS, moodOf } from './audio.js?v=58';
+import { TILES } from './board-map.js?v=58';
+import { canCarry, ITEMS } from './board-items.js?v=58';
+import { CRYSTAL_PRICE, BoardGame, levelCost } from './board-game.js?v=58';
+import { FORMATIONS, TECHS } from './board-battle.js?v=58';
+import { performance as scoreOf, targets } from './board-minigames.js?v=58';
+import { BoardScene } from './board-draw.js?v=58';
+import { BoardRoom } from './board-room.js?v=58';
 
 const SAVE = 'oc-multiverse-sugoroku-v1';
 const E = escapeHtml;

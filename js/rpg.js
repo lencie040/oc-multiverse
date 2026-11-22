@@ -1,19 +1,13 @@
-// レベル・戦闘・宇宙の魔物・救難信号・お金と持ち物 (Sim に足すメソッド)
-import { rand, randInt, pick, chance, hashStr } from './util.js?v=57';
-import { powerAt, MAX_LEVEL, worldsWithin, OBSERVER_LEVEL, WORLD_RANK } from './model.js?v=57';
-import { splitTypes, monsterType } from './types.js?v=57';
-import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost } from './battle.js?v=57';
-import { ITEMS, SELLERS } from './items.js?v=57';
-import { TOP_FLOOR, towerById, floorName, floorStats, floorCoins } from './tower.js?v=57';
+// レベル・戦闘・お金と持ち物 (Sim に足すメソッド)
+import { rand, pick, chance, hashStr } from './util.js?v=58';
+import { powerAt, MAX_LEVEL, OBSERVER_LEVEL } from './model.js?v=58';
+import { splitTypes, monsterType } from './types.js?v=58';
+import { learnset, makeUnit, bestMoves, startBattle, battleTurn, autoBattle, boost } from './battle.js?v=58';
+import { ITEMS, SELLERS } from './items.js?v=58';
+import { TOP_FLOOR, towerById, floorName, floorStats, floorCoins } from './tower.js?v=58';
 
 const TURN_SEC = 0.9; // 自動の戦闘の1ターンの長さ (秒)
 const FIGHT_MIN = 2 / 60, FIGHT_MAX = 8 / 60; // 自動の戦闘の長さ (分)
-const SOS_RANGE = 3; // 救難信号が届く世界線の距離
-const SOS_EVERY = 180; // 操作していないキャラが救難信号を出し直す間隔 (分)
-const TRANSIT_MIN_LV = 20;
-export const TRANSIT_BASE = 200; // 宇宙の魔物の種族値 (1能力あたり)
-const SAFE_ODDS = 0.5; // 操作していないキャラが世界線移動に出る勝率の目安
-
 const monsterMoves = (type) => [
   { key: `m:${type}`, nm: `${type}のかみつき`, types: [type], cat: 'p', contact: true, pw: 80, acc: 100, pp: 40, pri: 0, cond: '', eff: '', fx: { ss: [], st: [], ok: [] } },
   { key: `m2:${type}`, nm: `${type}の波動`, types: [type], cat: 's', contact: false, pw: 80, acc: 100, pp: 40, pri: 0, cond: '', eff: '', fx: { ss: [], st: [], ok: [] } },
@@ -81,7 +75,7 @@ export const RPG = {
     if (it.kind === 'shield') { m.vol.sh = { hp: Math.floor(m.max * 0.4), B: null, D: null, col: null }; m.vol.shEnd = 999; say(`${m.nm}は シールドを張った！`); }
   },
   // 操作していないキャラの戦闘中の判断
-  npcChoice(u, space) {
+  npcChoice(u) {
     const c = u.src.char;
     if (!c) return null;
     const r = u.hp / u.max;
@@ -89,7 +83,7 @@ export const RPG = {
       const id = ['manten', 'kizu2', 'kizu'].find((x) => c.items[x]);
       if (id) return { t: 'item', id };
     }
-    if (r < 0.2 && !space && c.items.bread) { this.takeItem(c, 'bread'); return { t: 'run' }; }
+    if (r < 0.2 && c.items.bread) { this.takeItem(c, 'bread'); return { t: 'run' }; }
     return null;
   },
 
@@ -131,15 +125,14 @@ export const RPG = {
     for (const [t, i, p] of f.tl || []) { if (t > sec) break; pct[f.ids[i]] = p; }
     return (f.ids || []).map((id) => ({ ...(names.get(id) || { id, nm: '仲間', lv: 0, side: 0 }), pct: pct[id] ?? 100 }));
   },
-  fightOf(id) { return this.fights.find((f) => f.left?.some((x) => x[0] === id) || f.right?.some((x) => x[0] === id)); },
   fightSec(B) { return Math.min(FIGHT_MAX, Math.max(FIGHT_MIN, (B.turn * TURN_SEC) / 60)); },
   // 戦う仲間 (同じ場所にいて動ける人。3人まで同時に、残りは控え)
   fighters(c) { return this.partyOf(c).filter((p) => p.state !== 'down').slice(0, 6); },
   // 観戦用に戦闘の経過を記録し、結果を返す
-  fight(c, foes, place, { space = false } = {}) {
+  fight(c, foes, place) {
     const left = this.fighters(c).map((p) => this.charUnit(p, foes));
     const B = this.curB = this.newBattle(left, foes);
-    while (!B.done && B.turn < 30) battleTurn(B, (u) => (u.s === 0 ? this.npcChoice(u, space) : null));
+    while (!B.done && B.turn < 30) battleTurn(B, (u) => (u.s === 0 ? this.npcChoice(u) : null));
     if (!B.done) autoBattle(B, 30);
     this.addFight(place, left, foes, B);
     return { win: B.win === 0, fled: B.fled === 0, kills: foes.filter((m) => m.hp <= 0).length, sec: this.fightSec(B) };
@@ -179,148 +172,6 @@ export const RPG = {
     c.coins += foes.reduce((coin, monster) => coin + this.killCoin(monster), 0);
     if (this.abilityOf(c).startsWith('「ものひろい') && chance(0.1)) this.addItem(c, pick(['kizu', 'onigiri', 'nandemo']));
   },
-
-  // ---------- 世界線移動の魔物 ----------
-  routeLevel(from, to) {
-    const W = this.m.worlds, d = Math.max(W.get(from).danger, W.get(to).danger);
-    return Math.max(TRANSIT_MIN_LV + Math.floor(d / 4), Math.round(OBSERVER_LEVEL * 0.8));
-  },
-  spaceFoes(from, to) {
-    const W = this.m.worlds, lv = this.routeLevel(from, to), type = W.get(pick([from, to]));
-    const n = randInt(2, 3);
-    return Array.from({ length: n }, (_, i) => {
-      const t = monsterType(type);
-      return { id: `sp${this.nextMonsterId++}`, lv, base: TRANSIT_BASE, type: t, boss: false, i };
-    });
-  },
-  // 模擬戦の勝率。結果はレベルと行き先の強さごとに覚えておく
-  travelOdds(c, to) {
-    const from = c.world, lv = this.routeLevel(from, to);
-    const key = `${c.id}:${c.lv}:${lv}:${c.abilities.indexOf(this.abilityOf(c))}`;
-    if (this.oddsCache.has(key)) return this.oddsCache.get(key);
-    let win = 0;
-    const was = this.quiet;
-    this.quiet = true;
-    for (let i = 0; i < 6; i++) {
-      const foes = this.spaceFoes(from, to).map((m) => this.monsterUnit(m));
-      const B = this.curB = this.newBattle([this.charUnit(c, foes)], foes);
-      autoBattle(B, 30);
-      if (B.win === 0) win++;
-    }
-    this.quiet = was;
-    this.oddsCache.set(key, win / 6);
-    if (this.oddsCache.size > 4000) this.oddsCache.clear();
-    return win / 6;
-  },
-  safeHop(c, to) { return this.travelOdds(c, to) >= SAFE_ODDS; },
-  // 世界団の移動では魔物に2回遭う
-  danOdds(c, toDan) { return this.travelOdds(c, this.edgeOf(toDan)) ** 2; },
-  safeDan(c, toDan) { return this.danOdds(c, toDan) >= SAFE_ODDS; },
-  // 飛んでいる途中で魔物に遭う時刻
-  planEncounters(kind, start, end, t1, t2) {
-    if (kind === 'dan') return [t1 ?? start + (end - start) * 0.25, t2 ?? end - (end - start) * 0.25];
-    return [start + (end - start) * rand(0.35, 0.65)];
-  },
-  stepTransit(c) {
-    const tr = c.transit;
-    if (tr.downed) {
-      if (c.state !== 'down') c.state = 'down';
-      if (tr.downed.respawn != null) { if (this.t >= tr.downed.respawn) this.respawnHome(c); return; }
-      if (this.t >= tr.downed.next) this.sendSOS(c);
-      return;
-    }
-    if (tr.pausedAt != null) return;
-    if (tr.encs?.length && this.t >= tr.encs[0]) {
-      tr.encs.shift();
-      if (c.flags?.cloak) { delete c.flags.cloak; this.say(c, 'マントのおかげで見つからなかった'); return; }
-      return this.spaceBattle(c);
-    }
-    if (this.t >= tr.end) this.arrive(c);
-  },
-  pauseTransit(tr) { tr.pausedAt = this.t; },
-  resumeTransit(tr) {
-    const d = this.t - tr.pausedAt;
-    for (const k of ['start', 'end', 't1', 't2']) if (tr[k] != null) tr[k] += d;
-    if (tr.encs) tr.encs = tr.encs.map((t) => t + d);
-    tr.pausedAt = null;
-  },
-  spaceBattle(c) {
-    const tr = c.transit;
-    this.pauseTransit(tr);
-    const defs = this.spaceFoes(tr.from, tr.to), foes = defs.map((m) => this.monsterUnit(m));
-    const end = (r) => {
-      if (!c.transit) return;
-      if (r.win) { this.winSpoils(c, defs); c.kills += defs.length; this.resumeTransit(tr); this.say(c, pick(['なんとか切り抜けた！', 'ふぅ、危なかった', '宇宙は物騒だ…'])); }
-      else this.fallInSpace(c);
-    };
-    const r = this.fight(c, foes, { transit: c.id }, { space: true });
-    if (!r) return;
-    if (this.quiet) return end(r);
-    tr.fightEnd = { at: this.t + r.sec, r };
-    this.pending.push({ at: this.t + r.sec, fn: () => end(r) });
-  },
-  fallInSpace(c) {
-    const tr = c.transit;
-    tr.downed = { t: this.t, next: this.t + 20, sos: 0 };
-    for (const p of this.partyOf(c)) { p.state = 'down'; p.downs++; p.bubble = null; this.emote(p, '💫'); }
-    if (this.daily) this.daily.downs += this.partyOf(c).length;
-    const a = this.wname(tr.from), b = this.wname(tr.to);
-    this.log(`💫 ${this.partyNames(c)}が「${a}」と「${b}」の間の宇宙で魔物に敗れ、倒れている`, tr.from, this.partyOf(c).map((p) => p.id), true, { kind: 'space-down' });
-  },
-  respawnHome(c) {
-    c.transit = null;
-    this.sendHome(c, `${c.name}は宇宙で倒れ、家で目を覚ました`);
-  },
-  // 救難信号: 倒れた場所の両端から3マス以内の世界線に届く
-  sosWorlds(tr) {
-    const W = this.m.worlds, out = new Set();
-    for (const id of [tr.from, tr.to]) for (const w of worldsWithin(W, id, SOS_RANGE).keys()) out.add(w);
-    return out;
-  },
-  sendSOS(c) {
-    const tr = c.transit;
-    if (!tr?.downed) return false;
-    tr.downed.next = this.t + SOS_EVERY;
-    tr.downed.sos++;
-    const reach = this.sosWorlds(tr);
-    this.log(`🆘 ${c.name}が宇宙から救難信号を出した！（「${this.wname(tr.from)}」の周辺に届いている）`, tr.from, [c.id], true, { kind: 'sos' });
-    if (tr.downed.helper) return true;
-    const cands = this.m.chars.filter((o) => reach.has(o.world) && o !== c && o.rank >= WORLD_RANK && this.m.worlds.get(o.world).dan === this.m.worlds.get(tr.to).dan && this.free(o) && !o.trip && !o.party.length && o.pts >= 1 && this.travelOdds(o, tr.to) >= 0.4);
-    cands.sort((a, b) => (c.friends[b.id] || 0) - (c.friends[a.id] || 0) || b.lv - a.lv);
-    if (cands[0]) this.goRescue(cands[0], c);
-    return true;
-  },
-  goRescue(o, c) {
-    const tr = c.transit;
-    if (!tr?.downed || o.transit || o.rank < WORLD_RANK || this.m.worlds.get(o.world)?.dan !== this.m.worlds.get(tr.to)?.dan) return false;
-    tr.downed.helper = o.id;
-    o.pts = Math.max(0, o.pts - 1);
-    this.say(o, `${c.name}を助けに行く！`);
-    this.log(`🚑 ${o.name}が${c.name}の救難信号を受けて宇宙へ向かった`, o.world, [o.id, c.id], true);
-    this.startTransit(o, 'line', o.world, tr.to, rand(3, 5), { rescue: c.id });
-    return true;
-  },
-  rescue(c, by) {
-    const tr = c.transit;
-    if (!tr?.downed) return;
-    for (const p of this.partyOf(c)) p.state = 'ok';
-    tr.downed = null;
-    this.resumeTransit(tr);
-    tr.encs = [];
-    this.addFriend(c, by, 6);
-    this.emote(c, '😭');
-    this.say(c, 'ありがとう…！');
-    this.log(`🚑 ${by.name}が宇宙で倒れていた${c.name}を助け出した！`, tr.to, [by.id, c.id], true, { kind: 'rescued' });
-  },
-  // 同じ道を通りかかった人が見つけて助ける
-  passBy(traveler, from, to) {
-    for (const o of this.m.chars) {
-      const tr = o.transit;
-      if (!tr?.downed || o === traveler) continue;
-      if ((tr.from === from && tr.to === to) || (tr.from === to && tr.to === from)) { this.rescue(o, traveler); return; }
-    }
-  },
-  spaceDowned() { return this.m.chars.filter((c) => c.transit?.downed); },
 
   // ---------- 持ち物 ----------
   addItem(c, id, n = 1) {

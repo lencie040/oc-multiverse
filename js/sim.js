@@ -1,9 +1,9 @@
 // キャラクターの自律行動シミュレーション (描画とは独立に全世界線ぶん動く)
-import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=57';
-import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt, OBSERVER_LEVEL, WORLD_RANK, DAN_RANK } from './model.js?v=57';
-import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=57';
-import { loadBattleData } from './battle.js?v=57';
-import { RPG } from './rpg.js?v=57';
+import { rand, randInt, pick, chance, weighted, dist2, hashStr, seeded, MIN_PER_DAY, nowGameT, dateOfDay } from './util.js?v=58';
+import { randomWild, randomTown, hopCost, cheapestPath, danCost, powerAt, OBSERVER_LEVEL, WORLD_RANK, DAN_RANK } from './model.js?v=58';
+import { splitTypes, edge, edgeNote, monsterType, loadTypeChart } from './types.js?v=58';
+import { loadBattleData } from './battle.js?v=58';
+import { RPG } from './rpg.js?v=58';
 
 export const CATS = {
   daily: { label: 'デイリー', icon: '🍙', color: '#7ccf8a' },
@@ -78,7 +78,6 @@ export class Sim {
     loadTypeChart(model.types);
     loadBattleData(model.types.types, model.moves, model.chars);
     this.learned = new Map(); // キャラごとの覚えている技
-    this.oddsCache = new Map();
     this.fights = [];
     this.pending = []; // 少し後に起きること (戦闘の決着など)
     this.nextFightId = 1;
@@ -324,7 +323,10 @@ export class Sim {
   }
 
   updateChar(c, dt) {
-    if (c.transit) return this.stepTransit(c);
+    if (c.transit) {
+      if (this.t >= c.transit.end) this.arrive(c);
+      return;
+    }
     if (c.bubble && this.t > c.bubble.until) c.bubble = null;
     if (c.state === 'down') { if (c.downUntil != null && this.t >= c.downUntil) this.recover(c); return; }
     if (c.partyLeader) return this.followLeader(c, dt);
@@ -379,9 +381,7 @@ export class Sim {
 
   displayAct(c) {
     const tr = this.transitOf(c);
-    if (tr?.downed?.respawn != null) return { cat: 'battle', icon: '💫', text: `宇宙で倒れている（あと${Math.max(1, Math.ceil(tr.downed.respawn - this.t))}分で家に戻る）` };
-    if (tr?.downed) return { cat: 'battle', icon: '💫', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」の間の宇宙で倒れている` };
-    if (tr) return { cat: 'move', icon: tr.kind === 'dan' ? '🌌' : '🌀', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」へ移動中（あと${Math.max(1, Math.ceil(tr.end - (tr.pausedAt ?? this.t)))}分）` };
+    if (tr) return { cat: 'move', icon: tr.kind === 'dan' ? '🌌' : '🌀', text: `「${this.wname(tr.from)}」→「${this.wname(tr.to)}」へ移動中（あと${Math.max(1, Math.ceil(tr.end - this.t))}分）` };
     if (c.downUntil != null) return { cat: 'battle', icon: '💫', text: `${c.act.label}（あと${Math.max(1, Math.ceil(c.downUntil - this.t))}分）` };
     if (c.state === 'down') return { cat: 'battle', icon: '💫', text: '倒れている（朝まで動けない）' };
     if (c.state === 'camp') return { cat: 'daily', icon: '⛺', text: '野宿中（すやすや）' };
@@ -1238,7 +1238,7 @@ export class Sim {
   partySize(c) { return 1 + c.party.length; }
   // 仲間を連れていくと人数分のptがかかる
   hopPrice(c, a, b) { return hopCost(this.m.worlds, a, b) * this.partySize(c); }
-  canHop(c, to) { return this.partyCanTravel(c, WORLD_RANK) && c.world !== to && this.m.worlds.get(c.world).neighbors.includes(to) && c.pts >= this.hopPrice(c, c.world, to) && this.safeHop(c, to); }
+  canHop(c, to) { return this.partyCanTravel(c, WORLD_RANK) && c.world !== to && this.m.worlds.get(c.world).neighbors.includes(to) && c.pts >= this.hopPrice(c, c.world, to); }
   routeCost(c, from, to) {
     if (this.m.worlds.get(from).dan !== this.m.worlds.get(to).dan) return Infinity;
     const r = cheapestPath(this.m.worlds, from, to);
@@ -1254,12 +1254,12 @@ export class Sim {
   // 世界団の移動は世界線の果てからだけ
   atEdge(c) { return c.world === this.danOf(c).edge; }
   edgeOf(danId) { return this.m.danById.get(danId).edge; }
-  canDan(c, toDan) { return this.partyCanTravel(c, DAN_RANK) && this.atEdge(c) && this.danOf(c).neighbors.includes(toDan) && c.pts >= this.danPrice(c, toDan) && this.safeDan(c, toDan); }
+  canDan(c, toDan) { return this.partyCanTravel(c, DAN_RANK) && this.atEdge(c) && this.danOf(c).neighbors.includes(toDan) && c.pts >= this.danPrice(c, toDan); }
   // 果てまでの道のりも含めて、行ける世界団
   affordableDans(c) {
     if (!this.partyCanTravel(c, DAN_RANK)) return [];
     const edge = this.danOf(c).edge, walk = c.world === edge ? 0 : this.routeCost(c, c.world, edge);
-    return this.danOf(c).neighbors.filter((d) => c.pts >= walk + this.danPrice(c, d) && this.safeDan(c, d));
+    return this.danOf(c).neighbors.filter((d) => c.pts >= walk + this.danPrice(c, d));
   }
   // 世界団どうしのつながりをたどって、目的の世界団へ向かう次の世界団
   nextDan(from, to) {
@@ -1287,8 +1287,7 @@ export class Sim {
     this.recruit(c, dan ? Math.min(...dans.map((d) => this.danPrice(c, d))) : 2, dan ? DAN_RANK : WORLD_RANK);
     if (!dan) {
       // 仲間を含めて払えるかを確認し、往復できなければ片道の遠出にする
-      const able = w.neighbors.filter((nb) => this.safeHop(c, nb));
-      const minHop = Math.min(...able.map((nb) => this.hopPrice(c, c.world, nb)));
+      const minHop = Math.min(...w.neighbors.map((nb) => this.hopPrice(c, c.world, nb)));
       if (c.pts < minHop) { this.endTrip(c); return false; }
       if (c.trip.mode === 'trip' && c.pts < minHop * 2) c.trip.mode = 'far';
     }
@@ -1397,7 +1396,7 @@ export class Sim {
       // 日帰りなら、行った先から帰れるだけのptを残す
       const ok = w.neighbors.filter((nb) => {
         const cost = this.hopPrice(c, c.world, nb);
-        return this.safeHop(c, nb) && c.pts >= cost + (canReturn && tr.mode === 'trip' ? this.routeCost(c, nb, c.home) : 0);
+        return this.canHop(c, nb) && c.pts >= cost + (canReturn && tr.mode === 'trip' ? this.routeCost(c, nb, c.home) : 0);
       });
       const fresh = ok.filter((id) => !tr.visited.includes(id));
       if (ok.length) return this.goPortal(c, pick(fresh.length ? fresh : ok));
@@ -1452,7 +1451,6 @@ export class Sim {
 
   startTransit(c, kind, from, to, dur, extra = {}) {
     c.transit = { kind, from, to, start: this.t, end: this.t + dur, sx: c.x, sz: c.z, ...extra };
-    c.transit.encs = this.planEncounters(kind, this.t, this.t + dur, extra.t1, extra.t2);
     c.world = TRANSIT;
     c.walking = false;
     c.bubble = null;
@@ -1469,7 +1467,7 @@ export class Sim {
   // 移動のどの段階か: up (ゲートから飛び立つ) → line (世界団マップ) / exit・space・enter (世界団の外へ出て宇宙を飛び、中へ入る) → down (降りる)
   // f はその段階の中での進み具合 (0〜1)
   transitStage(tr) {
-    const t = tr.pausedAt ?? this.t, clamp01 = (v) => Math.min(1, Math.max(0, v));
+    const t = this.t, clamp01 = (v) => Math.min(1, Math.max(0, v));
     const up = tr.start + TAKEOFF, down = tr.end - TAKEOFF;
     if (t < up) return { stage: 'up', f: clamp01((t - tr.start) / TAKEOFF) };
     if (t >= down) return { stage: 'down', f: clamp01((t - down) / TAKEOFF) };
@@ -1482,8 +1480,7 @@ export class Sim {
   }
 
   arrive(c) {
-    const { kind, from, to, tx, tz, rescue } = c.transit;
-    if (rescue) { const o = this.m.charById.get(rescue); if (o) this.rescue(o, c); } else this.passBy(c, from, to);
+    const { kind, from, to, tx, tz } = c.transit;
     c.transit = null;
     const tw = this.m.worlds.get(to);
     let p;
@@ -1763,12 +1760,15 @@ export class Sim {
       const transit = c.transit ?? map.get(c.partyLeader)?.transit;
       const destination = c.world === TRANSIT ? transit?.to : c.world;
       const rankNeeded = worlds.get(destination)?.dan !== c.dan || transit?.kind === 'dan' ? DAN_RANK : WORLD_RANK;
-      const lostLocation = (c.world === TRANSIT ? !canRestoreTransit(transit) : !worlds.has(c.world))
+      // 旧版の宇宙で倒れたキャラは、同行者も含めて各自の家へ戻す。
+      const downInSpace = c.world === TRANSIT && (c.state === 'down' || !!transit?.downed);
+      const lostLocation = downInSpace || (c.world === TRANSIT ? !canRestoreTransit(transit) : !worlds.has(c.world))
         || (c.world !== c.home && c.rank < rankNeeded);
       if (lostLocation) {
         const home = worlds.get(c.home).geo.homes[c.id];
         Object.assign(c, { world: c.home, x: home.x, z: home.z, dest: null, transit: null, trip: null, state: 'ok', downUntil: null, partyLeader: null });
       }
+      if (downInSpace) c.party = [];
       const act = c.act;
       const wasControlled = d.ctrl && !c.transit && !c.partyLeader && c.state === 'ok';
       const wasHungry = c.state === 'down' && (d.starveDay != null || act.label?.includes('空腹で倒れ'));
@@ -1790,8 +1790,15 @@ export class Sim {
       for (const o of c.orders || []) this.addItem(c, o.id, o.n);
       delete c.orders;
       if (c.act?.kind === 'tower') { c.act.kind = 'idle'; c.act.until = this.t; }
-      // 途中で閉じられた戦闘は、なかったことにして続きから
-      if (c.transit?.pausedAt != null && !c.transit.downed) this.resumeTransit(c.transit);
+      if (c.transit) {
+        // 交戦で中断していた旧版の移動は、残り時間を引き継ぐ。
+        const { pausedAt, encs, fightEnd, downed, rescue, ...journey } = c.transit;
+        if (pausedAt != null) {
+          const pause = this.t - pausedAt;
+          for (const key of ['start', 'end', 't1', 't2']) if (journey[key] != null) journey[key] += pause;
+        }
+        c.transit = journey;
+      }
       if (c.act?.kind === 'fight') { c.act.kind = 'idle'; c.act.until = this.t; }
       c.log = this.events.filter((e) => e.ids.includes(c.id)).slice(-30);
     }

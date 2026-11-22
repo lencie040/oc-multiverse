@@ -1,16 +1,16 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildModel } from './model.js?v=57';
-import { Sim } from './sim.js?v=57';
-import { UniverseView, ClusterView, WorldView } from './views.js?v=57';
-import { UI } from './ui.js?v=57';
-import { Director } from './director.js?v=57';
-import { BoardUI } from './board-ui.js?v=57';
-import { Sound, moodOf, danMoodOf } from './audio.js?v=57';
-import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=57';
-import { Sync } from './sync.js?v=57';
-import { PostFX } from './fx.js?v=57';
-import { loadGameData } from './catalog.js?v=57';
+import { buildModel } from './model.js?v=58';
+import { Sim } from './sim.js?v=58';
+import { UniverseView, ClusterView, WorldView } from './views.js?v=58';
+import { UI } from './ui.js?v=58';
+import { Director } from './director.js?v=58';
+import { BoardUI } from './board-ui.js?v=58';
+import { Sound, moodOf, danMoodOf } from './audio.js?v=58';
+import { MIN_PER_DAY, nowGameT, ultraUp, isPhone } from './util.js?v=58';
+import { Sync } from './sync.js?v=58';
+import { PostFX } from './fx.js?v=58';
+import { loadGameData } from './catalog.js?v=58';
 
 const SAVE_KEY = 'oc-multiverse-save-v1';
 const SETTINGS_KEY = 'oc-multiverse-settings';
